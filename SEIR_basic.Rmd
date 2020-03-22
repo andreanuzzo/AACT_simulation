@@ -1,0 +1,249 @@
+---
+title: "SIR_basic"
+author: "Andrea Nuzzo"
+date: `r Sys.date()`
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+home = file.path('~/Documents/MIT/SafeKit_model/')
+```
+
+```{r}
+library(deSolve)
+library(tidyverse)
+library(ggthemes)
+```
+
+# Basic SIR
+Model is:
+$\displaystyle \frac{\partial S}{\partial t} = - \frac{SI}{N}$
+
+$\displaystyle \frac{\partial I}{\partial t} = \beta \frac{SI}{N} - \gamma \frac{I}{N}$
+
+$\displaystyle \frac{\partial R}{\partial t} =  \gamma \frac{I}{N}$
+
+$\beta = cp$
+
+$R0 = cpd$
+
+$S$ = proportion of susceptible individuals in total population
+$I$ = proportion of infected individuals in total population
+$R$ = proportion of recovered individuals in total population
+$\beta$ = transmission parameter (rate of infection for susceptible-infected contact)
+$\gamma$ = recovery parameter (rate of infected transitioning to recovered)
+$c$ =number of contacts each host has per unit time (contact rate)
+$p$ = probability of transmission of infection per contact (transmissibility)
+$t$ = evaluation time in days
+$d$ = infectious period (days)
+
+# Assumptions
+
+Set conditions as follows:
+
+```{r}
+US_pop_2020 = 329410596 # US population based on census = N
+Infected = 14250 # total infected based on [JHU dashboard data](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6) at March 20
+Recovered = 121  # total recovered based on [JHU dashboard data](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6) at March 20
+Susceptible = US_pop_2020 - Infected
+d = 14 #estimted contagious asymptomatic
+obs_time = 180
+R0 = 3.3 # estimated R0
+gamm = 1/d # need to check this 
+bet = R0/d
+```
+
+```{r}
+SIR.model <- function(Suscep, Infect, Rec, Tot_pop, t, b, g){ 
+  
+  init <- c(S_prop = Suscep/Tot_pop,
+            Inf_prop = Infect/Tot_pop,
+            Rec_prop = Rec/Tot_pop )
+  
+  parameters <- c(bet=b,gamm=g) 
+  time <- seq(0,t,by=t/(2*length(1:t))) 
+  
+  eqn <- function(time,state,parameters){ 
+    with(as.list(c(state,parameters)),{ 
+      dS <- -bet*S_prop*Inf_prop
+      dI <- bet*S_prop*Inf_prop-gamm*Inf_prop 
+      dR <- gamm*Inf_prop
+      return(list(c(dS,
+                    dI,
+                    dR)
+                  ))}
+      ) 
+  }
+  
+  out<-ode(y=init,times=time,eqn,parms=parameters) 
+  out.df<-as.data.frame(out) 
+}
+```
+
+```{r}
+SIR.model(Susceptible, Infected, Recovered, US_pop_2020, obs_time, bet, gamm) %>% 
+  as.data.frame() %>% 
+  gather(Compartments, value, -time) %>% 
+  ggplot() +
+  aes(x=time, y= value, color= Compartments) +
+  geom_line() +
+  theme_clean() + 
+  scale_color_pander()
+```
+
+# Epicalculator
+Recoding the [Epifemic Calculator](http://gabgoh.github.io/COVID/index.html) which uses a SEIR model with some modifications. In particular:
+
+$R_t$ = transmission at time t
+$InterventionTime$ = day of containment enforcin
+$InterventionAmt$ = desired diminution of $R_t$ (in percentage)
+$T_{inf}$ = time the patient is infectious
+$T_{inc}$ = incubation time (no symptoms _BUT_ infectious)
+
+$\beta$ $a$ and $\gamma$ will depend on the factors above. 
+
+$T_inc$ = time of incubation (i.e. the change between $E$ and $I$)
+$E$ = exposed (i.e. infected but _NOT_ contagious)
+
+Then the model subdivides the last compartment into $Mild$, $Recovered$, $Dead$, with imputed percentages. 
+
+## Model
+
+$\displaystyle \frac{\partial{S}}{\partial{t}} = -\frac{R_t}{T_{inf}} SI $
+$\displaystyle \frac{\partial{E}}{\partial{t}} = \frac{R_t}{T_{inf}} SI - \frac{E}{T_{inc}} $
+$\displaystyle \frac{\partial{I}}{\partial{t}} = \frac{E}{T_{inc}} - \frac{I}{T_{inf}} $
+$\displaystyle \frac{\partial{R}}{\partial{t}} = \frac{I}{T_{inf}} $
+
+```{r}
+SEIR.model.intervention <- function(obs_time, contact_ratio, 
+                                    Pop, Susc, Infe, Reco, D,
+                                    R0, incubation_time, infectious_time, 
+                                    mild_recovery, hospital_lag, severe_recovery, death_time, 
+                                    case_to_severe, case_to_fatality, 
+                                    InterventionTime, InterventionAmt, duration){
+  
+  time <- seq(0,obs_time,by=obs_time/(2*length(1:obs_time))) 
+  
+  if(obs_time > InterventionTime && obs_time < InterventionTime + duration){
+    bet <- InterventionAmt*R0/infectious_time
+  } else {
+    if(obs_time > InterventionTime + duration){
+      bet <- 0.5*R0/infectious_time
+    } else{
+      bet <- R0/infectious_time
+    }
+  }
+
+  a      = 1/incubation_time
+  gamm   = 1/infectious_time
+  P_sev  = case_to_severe
+  P_CFR  = case_to_fatality
+  P_mild = 1- P_CFR - P_sev
+  
+  init <- c(Susceptible = Susc/Pop,
+            Exposed = (Infe/Pop)/contact_ratio,
+            Infected = Infe/Pop,
+            Mild = (Infe/Pop) * P_mild,
+            Severe = (Infe/Pop) * P_sev,
+            Hospitalized = (Infe/Pop) * (1 - P_CFR), 
+            Fatal_recovered = (Infe/Pop) * P_CFR,      #?
+            Mild_recovered = (Reco/Pop) * P_mild,
+            Severe_recovered = (Reco/Pop) * P_sev,
+            Fatal = D/Pop
+            )
+  
+  parameters <- c(a = a,
+                  gamm = gamm,  
+                  P_sev = P_sev, 
+                  P_CFR = P_CFR, 
+                  P_mild = P_mild
+ )
+  
+  eqn <- function(time,state,parameters){ 
+    with(as.list(c(state,parameters)),{ 
+      dS <- -bet*Susceptible*Infected
+      dE <- bet*Susceptible*Infected - a*Exposed
+      dI <- a*Exposed - gamm*Infected 
+      dMild <- P_mild*gamm*Infected - (1/mild_recovery)*Mild
+      dSevere <- P_sev*gamm*Infected - (1/hospital_lag)*Severe
+      dHosp <-  (1/hospital_lag)*Severe - (1/severe_recovery)*Hospitalized
+      dFatal <- P_CFR*gamm*Infected  - (1/death_time)*Fatal_recovered
+      dR_Mild <- (1/mild_recovery)*Mild
+      dR_Severe <- (1/severe_recovery)*Hospitalized
+      dDeath <- (1/death_time)*Fatal
+      
+      return(list(c(dS,dE, dI, dMild, dSevere, dHosp, dFatal, dR_Mild, dR_Severe, dDeath
+                    )
+                  ))}
+      ) 
+  }
+  
+  out<-ode(y=init,times=time,eqn,parms=parameters) 
+  
+  out.df<-as.data.frame(out)
+  
+}
+
+```
+
+## Assumptions
+```{r}
+L_death           = 32                       # length of severe cases from infection to trespass
+T_inc             = 5.2       
+T_inf             = 2.9 
+T_recovery_mild   = (14 - T_inf)               # Time in days for "true recovered"
+T_recovery_severe = (31.5 - T_inf)             # Time in days for hospitalized
+T_hospital_lag    = 5                        # Time of infected to be hospitalized?
+T_death           = L_death - T_inf 
+CFR               = 0.02                     # Case to fatality ratio  
+InterventionTime  = 100  
+InterventionAmt   = 1/3
+P_SEVERE          = 0.2                     # Hospitalization rate
+duration          = 7*12*1e10               # ?
+
+
+US_pop_2020       = 329410596               # US population based on census = N
+Infected          = 25493                   # total infected based on [JHU dashboard data](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6) at March 21
+Recovered         = 171                     # total recovered based on [JHU dashboard data](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6) at March 21
+Dead              = 307                     # total recovered based on [JHU dashboard data](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6) at March 21
+Susceptible       = US_pop_2020 - Infected - Recovered - Dead
+obs_time          = 180
+R0                = 3.3                     # estimated R0
+
+contact_ratio = 1/12    # my choice
+InterventionTime = 40 
+InterventionAmt = 0.2
+```
+
+```{r}
+SEIR.model.intervention(obs_time = obs_time, 
+                        contact_ratio = contact_ratio,
+                        Pop = 7e5, #US_pop_2020,
+                        Susc = 4e6, #Susceptible, 
+                        Infe = 2e4, #Infected, 
+                        Reco = 3e3, #Recovered, 
+                        D = 3e2,  #Dead,
+                        R0 = R0, 
+                        incubation_time = T_inc, 
+                        infectious_time = T_inf, 
+                        mild_recovery = T_recovery_mild, 
+                        hospital_lag = T_hospital_lag, 
+                        severe_recovery = T_recovery_severe, 
+                        death_time = T_death, 
+                        case_to_severe = P_SEVERE,
+                        case_to_fatality = CFR, 
+                        InterventionTime = InterventionTime, 
+                        InterventionAmt = InterventionAmt, 
+                        duration = duration) %>% 
+  as.data.frame() %>% 
+  gather(Compartments, value, -time) %>% 
+  ggplot() +
+  aes(x=time, y= value, color= Compartments) +
+  geom_line() +
+  geom_vline(xintercept = InterventionTime)+
+  scale_color_tableau()
+```
+
+
+
