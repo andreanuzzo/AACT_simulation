@@ -1,0 +1,230 @@
+---
+title: "SafePaths SEIR Impact"
+author: "Andrea Nuzzo"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: 
+    toc: yes
+  html_document: default
+---
+
+```{r message=FALSE, include=FALSE}
+library(deSolve)
+library(tidyverse)
+library(ggthemes)
+library(RCurl)
+library(lubridate)
+```
+
+# Intro
+Scope of this model is to demonstrate the impact of contact tracing procedures to limit the spreading of infectious diseases during outbreaks.
+
+# Current situation as of `r Sys.Date()`
+
+```{r}
+# US population based on census = N
+N = 329410596
+
+JHU_Confirmed<- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Infected, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_0 = date - min(date)) 
+
+JHU_Recovered <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Recovered, -`Province/State`, -`Country/Region`, -Lat, -Long)%>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_0 = date - min(date))
+
+JHU_Deaths <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_0 = date - min(date))
+
+Current_scenario <- JHU_Confirmed %>% 
+  group_by(date) %>% 
+  summarize(Infected = sum(Infected)) %>% 
+  full_join(JHU_Recovered %>% 
+  group_by(date) %>% 
+  summarize(Recovered = sum(Recovered)))%>% 
+  full_join(JHU_Deaths %>% 
+  group_by(date) %>% 
+  summarize(Deaths = sum(Deaths))) %>% 
+  ungroup%>% 
+  mutate(time_from_0 = as.numeric(date - min(date)))
+
+Current_scenario %>% 
+  gather(Compartments, Cases, -date, -time_from_0) %>% 
+    mutate(perc = Cases/N) %>% 
+    ggplot(aes(x=time_from_0, y=perc, color=Compartments)) +
+    # ylim(c(0,1.1))+
+    geom_line()+
+    theme_clean()+
+    scale_color_manual(values = c(Infected = 'red', 
+                                  Recovered = 'green', 
+                                  Deaths = 'black')) 
+
+Infected_symptomatic = tail(Current_scenario, 1)$Infected
+Recovered = tail(Current_scenario, 1)$Recovered
+Deaths = tail(Current_scenario, 1)$Deaths
+
+
+
+```
+
+# SEIR
+This simulation is based on a SEIR model with the following modifications:
+
+- Exposed *(include infected asymptomatic and non-infected contacts)* are subdivided into two mutually exclusive proportions: 
+    - Followers: contacts who receive the notification of exposure risk _and_ self-isolate themselves from further contact
+    - Non-followers: contacts who receive the notification of exposure risk _and_ self-isolate themselves from further contact
+
+In the ideal scenario, the adoption of contact tracing practices will a) lower the contact rate per day and therefore b) lower the Exposed population
+
+$T_{inf}$ = infectious period
+
+$T_{lat}$ = latent_period
+
+$c$ = contacts/day 
+
+$p$ = probability of infection if exposed (estimated based on R0)
+
+$\tau$ = percentage of non-followers among susceptible people
+
+$\displaystyle \beta = c * p * \tau$
+
+$\displaystyle \delta = \frac{1}{T_{inc}}$
+
+$\displaystyle \gamma = \frac{1}{T_{lat}}$
+
+$\displaystyle \mu$ = deaths/day (estimated)
+
+$\displaystyle R_0 = \beta \gamma$ 
+
+Then the model subdivides the last compartment into $Mild$, $Recovered$, $Dead$, with imputed percentages. 
+
+## Data and assumptions 
+
+```{r echo=TRUE}
+
+# Estimated parameters
+transmission_probability = 0.07
+contact_rate = 22 
+infectious_period = 2.9
+latent_period = 5.2
+non_symptomatic_ratio = 0.6
+mortality_rate = 0.033
+case_to_fatality = 0.02
+
+
+# Current state as JHU dashboard for March 22
+Exposed = (Infected_symptomatic/non_symptomatic_ratio)*contact_rate/as.integer(Sys.Date() - mdy('1/15/2020')) #Inferred based on assumptions
+Susceptible = N - (Exposed + Infected_symptomatic/non_symptomatic_ratio + Infected_symptomatic + Recovered + Deaths)
+obs_time = 300
+
+
+## Derived values
+Rt = contact_rate* infectious_period * transmission_probability
+timepoints = seq(0, obs_time, by = .5)
+```
+
+## Model
+
+$\displaystyle \frac{\partial{S}}{\partial{t}} = -\beta SI - \mu S$
+
+$\displaystyle \frac{\partial{E}}{\partial{t}} =  \beta SI  - \delta E$
+
+$\displaystyle \frac{\partial{I}}{\partial{t}} = \delta E - \gamma I_s$
+
+$\displaystyle \frac{\partial{R}}{\partial{t}} = \gamma I_s$
+
+```{r}
+
+## Test values:
+follower_percentage = 0.5
+
+state_values <- c(
+  S = Susceptible/N,
+  E = Exposed/N,
+  Is = Infected_symptomatic/N, 
+  R = Recovered/N
+)
+
+
+SEIR.model <- function(current_timepoint, state_values, parameters){
+  
+  ## create state valriables
+  S  = state_values[1] # susceptibles
+  E  = state_values[2] # exposed
+  Is = state_values[3] # infected symptomatic
+  R  = state_values[4] # recovered
+  
+  with(
+    as.list(parameters), 
+    {
+      ## compute derivatives
+      dS = (-beta_value * S * Is)
+      dE = ((beta_value * S * Is) - (delta_value * E))
+      dI = (delta_value * E) - (gamma_value * Is)
+      dR = (gamma_value * Is)
+      
+      # combine 
+      results = c(dS, dE, dI, dR)
+      list(results)
+    }
+  )
+  
+}
+
+```
+
+
+```{r}
+for (followers_perc in seq(0.0, 0.99, by=.1)) {
+  
+  tau = (1-followers_perc)
+  
+  parameters = c(
+  beta_value = contact_rate *tau * transmission_probability, 
+  gamma_value = 1 / infectious_period, 
+  delta_value = 1 / latent_period
+)
+
+  
+  R0_est <- with(as.list(parameters), beta_value/gamma_value)
+  
+  out <- lsoda(y = state_values, times = timepoints, func = SEIR.model, parms = parameters)
+
+  out <- out %>% 
+    as.data.frame()
+  
+  p <- out %>% 
+    gather(Compartments, perc, -time) %>% 
+    ggplot(aes(x=time, y=perc, color=Compartments)) +
+    ylim(c(0,1.1))+
+    geom_line()+
+    theme_clean()+
+    scale_color_manual(values = c(S='grey', 
+                                  E = 'blue',
+                                  Ia = 'pink', 
+                                  Is = 'red', 
+                                  R = 'green', 
+                                  D = 'black')) +
+    labs(title=paste0("SEIsR model, ", followers_perc*100, "% adoption rate"),
+         subtitle=paste0('Contact Rate = ', round(tau*contact_rate), '; Rt = ', round(R0_est, 2)))
+    
+  print(p)
+  
+}
+
+```
+
+

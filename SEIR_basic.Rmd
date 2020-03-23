@@ -96,16 +96,20 @@ SIR.model(Susceptible, Infected, Recovered, US_pop_2020, obs_time, bet, gamm) %>
 ```
 
 
-# MSEIR
+# SEIR
 Recoding the [Epidemic Calculator](http://gabgoh.github.io/COVID/index.html) which uses a SEIR model with some modifications. In particular:
 
 
 $T_{inf}$ = infectious period
+
 $T_{inc}$ = latent_period
 
 $\displaystyle \beta = c * p$
+
 $\displaystyle \delta = \frac{1}{T_{inc}}$
+
 $\displaystyle \gamma = \frac{1}{T_{inf}}$
+
 $\displaystyle \mu$ death rate
 
 Therefore
@@ -228,9 +232,6 @@ out <- lsoda(y = initial_values, times = timepoints, func = SEIR.model, parms = 
 out <- out %>% 
   as.data.frame()
 
-```
-
-```{r}
 out %>% 
   gather(Compartments, perc, -time) %>% 
   ggplot(aes(x=time, y=perc, color=Compartments)) +
