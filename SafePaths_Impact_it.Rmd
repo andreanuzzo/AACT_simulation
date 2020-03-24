@@ -5,6 +5,7 @@ date: "`r Sys.Date()`"
 output:
   pdf_document: 
     toc: yes
+    fig_caption: true
   html_document: default
 ---
 
@@ -22,32 +23,32 @@ Scope of this model is to demonstrate the impact of contact tracing procedures t
 # Current situation as of `r Sys.Date()`
 
 ```{r}
-# US population based on census = N
-N = 329410596
+# IT population based on census 
+N = 60485543
 
 JHU_Confirmed<- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='US') %>%
+  filter(`Country/Region`=='Italy') %>%
   gather(date, Infected, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
-         time_from_0 = date - min(date)) 
+         time_from_zero = date - min(date)) 
 
 JHU_Recovered <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='US') %>%
+  filter(`Country/Region`=='Italy') %>%
   gather(date, Recovered, -`Province/State`, -`Country/Region`, -Lat, -Long)%>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
-         time_from_0 = date - min(date))
+         time_from_zero = date - min(date))
 
 JHU_Deaths <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='US') %>%
+  filter(`Country/Region`=='Italy') %>%
   gather(date, Deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
-         time_from_0 = date - min(date))
+         time_from_zero = date - min(date))
 
 Current_scenario <- JHU_Confirmed %>% 
   group_by(date) %>% 
@@ -97,63 +98,72 @@ $c$ = contacts/day
 
 $p$ = probability of infection if exposed (estimated based on R0)
 
-$\tau$ = percentage of non-followers among susceptible people
+$P_{ad}$ = percentage of adoption of the app
 
-$\displaystyle \beta = c * p * \tau$
+$Eff$ = percentage of isolation efficacy
+
+$\alpha = P_{ad}*Eff$ = parameter of contact tracing app penetrance and efficacy of isolation 
+
+$\displaystyle \beta = c * p * (1-P_{ad})$
 
 $\displaystyle \delta = \frac{1}{T_{inc}}$
 
 $\displaystyle \gamma = \frac{1}{T_{lat}}$
 
-$\displaystyle \mu$ = deaths/day (estimated)
+$\displaystyle \mu$ = deaths/day (estimated based on logistic fit of death curve)
 
-$\displaystyle R_0 = \beta \gamma$ 
+$\displaystyle R_0 = \frac{\beta}{\gamma}$ 
 
 ## Data and assumptions 
 
 ```{r echo=TRUE}
 
 # Estimated parameters
-transmission_probability = 0.07
+R0 = 3.0 
 contact_rate = 22 
 infectious_period = 2.9
 latent_period = 5.2
 non_symptomatic_ratio = 0.6
-mortality_rate = 0.033
 case_to_fatality = 0.02
+obs_time = 300
 
 
 # Current state as JHU dashboard for March 22
 Exposed = (Infected_symptomatic/non_symptomatic_ratio)*contact_rate/as.integer(Sys.Date() - mdy('1/15/2020')) #Inferred based on assumptions
 Susceptible = N - (Exposed + Infected_symptomatic/non_symptomatic_ratio + Infected_symptomatic + Recovered + Deaths)
-obs_time = 300
+d.fit <- nls(formula = Deaths ~ SSlogis(as.numeric(time_from_zero), Asym, xmid, scal),data = JHU_Deaths[JHU_Deaths$Deaths>1,])
+mortality_rates = as.numeric(coef(d.fit)[2])
 
 
 ## Derived values
-Rt = contact_rate* infectious_period * transmission_probability
+transmission_probability = R0/(contact_rate* infectious_period)
 timepoints = seq(0, obs_time, by = .5)
 ```
 
 ## Model
 
-$\displaystyle \frac{\partial{S}}{\partial{t}} = -\beta SI - \mu S$
+$\displaystyle \frac{\partial{S}}{\partial{t}} = -\beta SI - \alpha E$
 
 $\displaystyle \frac{\partial{E}}{\partial{t}} =  \beta SI  - \delta E$
 
 $\displaystyle \frac{\partial{I}}{\partial{t}} = \delta E - \gamma I_s$
 
-$\displaystyle \frac{\partial{R}}{\partial{t}} = \gamma I_s$
+$\displaystyle \frac{\partial{R}}{\partial{t}} = \gamma I_s - \mu * I_s + \alpha * E$
+
+$\displaystyle \frac{\partial{D}}{\partial{t}} = \mu I_s$
 
 ```{r}
 
 ## Test values:
-follower_percentage = 0.5
+efficacy_isolation = .99 
+lag_tracing = 0
 
 state_values <- c(
   S = Susceptible/N,
   E = Exposed/N,
   Is = Infected_symptomatic/N, 
-  R = Recovered/N
+  R = Recovered/N, 
+  D = Deaths/N
 )
 
 
@@ -169,13 +179,14 @@ SEIR.model <- function(current_timepoint, state_values, parameters){
     as.list(parameters), 
     {
       ## compute derivatives
-      dS = (-beta_value * S * Is)
-      dE = ((beta_value * S * Is) - (delta_value * E))
+      dS = (-beta_value * S * Is) -alpha_value * E
+      dE = (beta_value * S * Is) - delta_value * E
       dI = (delta_value * E) - (gamma_value * Is)
-      dR = (gamma_value * Is)
+      dR = (gamma_value * Is) - mu_value * Is + alpha_value * E
+      dD = (mu_value * Is)
       
       # combine 
-      results = c(dS, dE, dI, dR)
+      results = c(dS, dE, dI, dR, dD)
       list(results)
     }
   )
@@ -186,43 +197,78 @@ SEIR.model <- function(current_timepoint, state_values, parameters){
 
 
 ```{r}
-for (followers_perc in seq(0.0, 0.99, by=.1)) {
-  
-  tau = (1-followers_perc)
-  
+res <- tibble()
+
+for (percent_adoption in seq(0.0, 0.99, by=.1)) {
+
   parameters = c(
-  beta_value = contact_rate *tau * transmission_probability, 
-  gamma_value = 1 / infectious_period, 
-  delta_value = 1 / latent_period
-)
-
+      alpha_value = percent_adoption*efficacy_isolation,
+      beta_value = contact_rate * transmission_probability * (1-percent_adoption), 
+      gamma_value = 1 / infectious_period, 
+      delta_value = 1 / latent_period, 
+      mu_value = 1/mortality_rates
+  )
   
-  R0_est <- with(as.list(parameters), beta_value/gamma_value)
-  
-  out <- lsoda(y = state_values, times = timepoints, func = SEIR.model, parms = parameters)
-
-  out <- out %>% 
-    as.data.frame()
-  
-  p <- out %>% 
-    gather(Compartments, perc, -time) %>% 
-    ggplot(aes(x=time, y=perc, color=Compartments)) +
-    ylim(c(0,1.1))+
-    geom_line()+
-    theme_clean()+
-    scale_color_manual(values = c(S='grey', 
-                                  E = 'blue',
-                                  Ia = 'pink', 
-                                  Is = 'red', 
-                                  R = 'green', 
-                                  D = 'black')) +
-    labs(title=paste0("SEIsR model, ", followers_perc*100, "% adoption rate"),
-         subtitle=paste0('Contact Rate = ', round(tau*contact_rate), '; Rt = ', round(R0_est, 2)))
     
-  print(p)
+    R0_est <- with(as.list(parameters), beta_value/gamma_value)
+    
+    
+    out <- lsoda(y = state_values, times = timepoints, func = SEIR.model, parms = parameters)
   
+    out <- out %>% 
+      as.data.frame()
+    
+    p <- out %>% 
+      gather(Compartments, perc, -time) %>% 
+      ggplot(aes(x=time, y=perc, color=Compartments)) +
+      ylim(c(0,1.1))+
+      geom_line()+
+      theme_clean()+
+      scale_color_manual(values = c(S='grey', 
+                                    E = 'blue',
+                                    Ia = 'pink', 
+                                    Is = 'red', 
+                                    R = 'green', 
+                                    D = 'black')) +
+      labs(title=paste0("SEIsR model, ", percent_adoption*100, "% adoption rate"),
+           subtitle=paste0('Contact Rate = ', round((1-percent_adoption)*contact_rate), 
+                           '; Rt = ', round(R0_est, 2))
+      )
+      
+    print(p)
+    
+    res <- res %>%  
+      bind_rows(out %>% mutate(adoption=percent_adoption))
 }
+
 
 ```
 
+```{r}
+res %>% 
+  # mutate_at(vars(S,E,Is,R,D), ~.*N) %>%
+  gather(Compartments, value, -time, -adoption) %>%  
+  ggplot()+
+  aes(x=time, color=Compartments, fill=Compartments, y=value) +
+  geom_bar(stat = 'identity') +
+  facet_grid(Compartments~adoption)+
+  theme_tufte()+
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = 'right')+
+  scale_fill_colorblind()+
+  scale_color_colorblind()
+  
+```
+```{r results='asis'}
+library(knitr)
+library(kableExtra)
+res %>%
+  group_by(adoption) %>% 
+  arrange(desc(adoption))
+  summarize_all(~paste0(round(max(.)*100,1), '%')) %>% 
+  select(adoption, max_infected = Is, max_death=D) %>% 
+  kable("latex", booktabs = T, 
+        caption = 'Estimated decrease of peak disease impact indicators, regardless of time. Model assumes 100% efficacy of self-isolation') %>%
+  kable_styling(latex_options = "striped", bootstrap_options = c("condensed")) 
+```
 
