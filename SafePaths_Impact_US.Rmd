@@ -23,12 +23,12 @@ Scope of this model is to demonstrate the impact of contact tracing procedures t
 # Current situation as of `r Sys.Date()`
 
 ```{r}
-# IT population based on census 
-N = 60485543
+# US population based on census 
+N = 329968629
 
 JHU_Confirmed<- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='Italy') %>%
+  filter(`Country/Region`=='US') %>%
   gather(date, Infected, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
@@ -36,7 +36,7 @@ JHU_Confirmed<- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-1
 
 JHU_Recovered <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='Italy') %>%
+  filter(`Country/Region`=='US') %>%
   gather(date, Recovered, -`Province/State`, -`Country/Region`, -Lat, -Long)%>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
@@ -44,7 +44,7 @@ JHU_Recovered <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-
 
 JHU_Deaths <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv') %>% 
   read_csv() %>% 
-  filter(`Country/Region`=='Italy') %>%
+  filter(`Country/Region`=='US') %>%
   gather(date, Deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
   group_by(`Province/State`) %>% 
   mutate(date = mdy(date), 
@@ -97,7 +97,7 @@ non_symptomatic_ratio = 0.6
 case_to_fatality = 0.02
 obs_time = 80
 
-reference_date <- as.Date('2020-02-21')
+reference_date <- Sys.Date()-40
 
 # Current state as JHU dashboard for `r Sys.Date()`
 
@@ -160,57 +160,11 @@ fitted_cumulative_incidence%>%
   geom_line()+
   geom_point(data = Current_scenario %>% 
                gather(Compartments, perc, -time_from_zero, -date) %>% 
-               rename(time=time_from_zero))+
-  geom_vline(xintercept = 47)
+               rename(time=time_from_zero))
 
 ```
 
 ## Model
-
-
-
-```{r}
-
-## Test values:
-efficacy_isolation = .99 
-lag_tracing = 0
-
-state_values <- c(
-  S = Susceptible,
-  E = (Susceptible-Infected-Recovered-Deaths),
-  Is = Infected_symptomatic, 
-  R = Recovered, 
-  D = Deaths
-)
-
-
-SEIR.model <- function(current_timepoint, state_values, parameters){
-  
-  ## create state valriables
-  S  = state_values[1] # susceptibles
-  E  = state_values[2] # exposed
-  Is = state_values[3] # infected symptomatic
-  R  = state_values[4] # recovered
-  
-  with(
-    as.list(parameters), 
-    {
-      ## compute derivatives
-      dS = (-beta_value/N) * S * Is -alpha_value * E
-      dE = (-beta_value/N) * S * Is - delta_value * E
-      dI = (delta_value * E) - (gamma_value * Is)
-      dR = (gamma_value * Is) - mu_value * Is + alpha_value * E
-      dD = (mu_value * Is)
-      
-      # combine 
-      results = c(dS, dE, dI, dR, dD)
-      list(results)
-    }
-  )
-  
-}
-
-```
 
 ```{r}
 SESQIRD <- function(current_timepoint, state_values, parameters){
@@ -241,15 +195,6 @@ SESQIRD <- function(current_timepoint, state_values, parameters){
   )
   
 }
-
-test_params = c(
-  Opt_par[1]*(1-percent_adoption),
-  Opt_par[2],
-  Opt_par[3],
-  delta_value = 1/latent_period,
-  perc_app = percent_adoption
-)
-  
 
 state_values <- c(Susceptible = Susceptible, 
                   Exposed = Infected * contact_rate,
