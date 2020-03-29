@@ -1,0 +1,722 @@
+---
+title: "SafePaths estimated impact over the course of COVID-19 2020 epidemic in the US"
+author: "Andrea Nuzzo"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: 
+    toc: yes
+    fig_caption: true
+  html_document: default
+---
+
+<style type="text/css">
+.caption {
+    font-size: x-small;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = TRUE, echo = F, warning = F, message = F)
+```
+
+
+```{r message=F, warning=FALSE}
+library(deSolve)
+library(tidyverse)
+library(ggthemes)
+library(RCurl)
+library(lubridate)
+library(RColorBrewer)
+library(ggpubr)
+library(ggsci)
+library(ggrepel)
+library(DiagrammeR)
+library(knitr)
+library(kableExtra)
+library(scales)
+library(directlabels)
+
+colorlist <- c(
+  Susceptible = '#ADB6B6FF', 
+  Deaths = '#1B1919FF',
+  Infected = '#AD002AFF', 
+  Exposed = '#ED0000FF',
+  Self_Isolated = '#FDAF91FF',
+  Quarantined = '#925E9FFF',
+  Recovered = '#0099B4FF'
+)
+```
+
+# Aim
+Scope of this model is to demonstrate the impact of contact tracing procedures to limit the spreading of infectious diseases during outbreaks.
+
+# Situation as of `r Sys.Date()`
+
+Data are collected from the GitHub repo of the [JHU CSSE COVID-19 team](https://doi.org/10.1016/S1473-3099(20)30120-1)
+
+```{r fig.cap='Overview of cases, recoveries and fatalities in the US population during the CIVID-19 pandemic as of `r Sys.Date()`'}
+# US population based on census 
+N = 329968629
+
+JHU_Confirmed<- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Infected, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_zero = date - min(date)) 
+
+JHU_Recovered <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Recovered, -`Province/State`, -`Country/Region`, -Lat, -Long)%>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_zero = date - min(date))
+
+JHU_Deaths <- getURL('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv') %>% 
+  read_csv() %>% 
+  filter(`Country/Region`=='US') %>%
+  gather(date, Deaths, -`Province/State`, -`Country/Region`, -Lat, -Long) %>% 
+  group_by(`Province/State`) %>% 
+  mutate(date = mdy(date), 
+         time_from_zero = date - min(date))
+
+Current_scenario <- JHU_Confirmed %>% 
+  group_by(date) %>% 
+  summarize(Infected = sum(Infected)) %>% 
+  full_join(JHU_Recovered %>% 
+  group_by(date) %>% 
+  summarize(Recovered = sum(Recovered)))%>% 
+  full_join(JHU_Deaths %>% 
+  group_by(date) %>% 
+  summarize(Deaths = sum(Deaths))) %>% 
+  ungroup%>% 
+  mutate(time_from_zero = as.numeric(date - min(date)))
+
+Infected_symptomatic = tail(Current_scenario, 1)$Infected
+Recovered = tail(na.omit(Current_scenario), 1)$Recovered
+Deaths = tail(Current_scenario, 1)$Deaths
+
+Current_scenario %>% 
+  gather(Compartments, Cases, -date, -time_from_zero) %>% 
+  mutate(perc = Cases/N) %>% 
+  ggplot(aes(x=time_from_zero, y=perc, color=Compartments)) +
+  # ylim(c(0,1.1))+
+  geom_point()+
+  ggtitle(paste0('Cumulative epidemics of COVID-19 in the US as of ', Sys.Date()))+
+  ylab('Cases (%)')+
+  xlab('Time since beginning of recording (days)')+
+  ggpubr::theme_pubr()+
+  scale_color_manual(values = colorlist) 
+
+
+```
+
+
+# Approach 
+
+In this framework we analyze two possibilities to implement non-clinical procedures to stop the spread of the epidemic: 
+
+- Advanced contact tracing: Through distributed Smartphone App and privacy-focused data collection, it is possible to inform Exposed (aka Asymptomatic/non-infected) members of the community of the exposure risk. Once warned, they would ideally self-isolate themselves and prevent second-order spreading of the contagion. Therefore, self-isolated contacts will depend on the app penetrance _p_ in both the Infected and the Exposed population. We are assuming efficacy 100% (or rather, traced contacts receiving warnings and not self-isolating would pose as much risk as non-traced contacts). Self-isolated members might still develop symptoms. The percentage of app penetration will also limit the further exposure, thus reducing the $\beta$ transition between Susceptible and Exposed.
+- Traditional measures: in order to stop the contagion, authorities might recur to enforce social distancing through different measures, going from limitation of public gathering to full lockdown. We use the variable _g_ to model these interventions which will act aspecifically on Susceptible, Exposed and Infected population, and bidirectionally between Exposed and the Quarantine compartment, to model efficacy of such measures. This measure does not depend on the percentage of Infected patients, but will still limit the $\beta$ of the Susceptible population.
+
+
+# Parametrization based on data
+In order to estimate parameters $\beta$, $\gamma$ and $mu$, we proceeded to analyze data from the current cohort of patients in the United States as of `r Sys.Date()`. As visible from the curve, the United states are in full exponential phase for the Infected compartment, while fatalities and recoveries start to appear. We used a simplified SIRD model fitted on estimated parameters based on literature and then reduced the total sum of squares difference between the predicted values and the observed values to adjust the three parameters. 
+
+```{r}
+# Choices
+obs_time = 80
+reference_date <- Sys.Date()-15
+timepoints = seq(0, obs_time, by = .5)
+
+# Pre-assumed parameters
+R0 = 3.02 
+infectious_period = 2.9
+latent_period = 5.2 
+
+
+# Current state as JHU dashboard for `r Sys.Date()`
+Infected = Current_scenario[Current_scenario$date>reference_date,]$Infected[1]
+Recovered = Current_scenario[Current_scenario$date>reference_date,]$Recovered[1]
+Deaths= Current_scenario[Current_scenario$date>reference_date,]$Deaths[1]
+
+Susceptible = N - Current_scenario[Current_scenario$date>reference_date,]$Infected[1]
+
+
+```
+
+## Data and assumptions 
+
+We assume the following initial parameters: 
+
+- $T_{inf}$ = Duration of the _infectious_period (~2.9 days, from literature)
+
+- $T_{lat}$ = Latency period before development of symptoms (~ 5.2, averaged from [literature](https://www.eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.5.2000062))
+
+- Basic $R_0$ = `r R0` from [](https://doi.org/10.1016/S2214-109X%2820%2930113-3)
+
+Preliminary death rate $\mu_0 = 0.01*I/N$ (1% estimated by [Mizumoto & Chowell 2020](https://www.medrxiv.org/content/10.1101/2020.02.19.20025163v1) in the early phase of the disease)
+
+$\beta_{0}$ imputed from the definition of $\displaystyle R_{0}= \frac{\beta}{\mu(\mu+\gamma)}$
+
+
+## SIRD Model
+```{r, echo=FALSE, eval=TRUE, message=FALSE, layout="l-page", fig.cap='Overview of the model flows used to simulate incidence of cases, recoveries and fatalities in the US population during the CIVID-19 pandemic', screenshot.force = TRUE}
+grViz("
+digraph SIRD {
+
+  graph [overlap = false, fontsize = 10] #, rankdir = LR]
+
+  node [shape = box,
+        fontname = Times]
+  S[label='S=Susceptible',style = filled, color = white];
+  I[label='I=Case confirmed',style = filled, color = Brown, fontcolor=white];
+  R[label='R=Recovered/immune',style = filled, color = CornFlowerBlue, fontcolor=white];
+  D[label='D=Case fatality',style = filled, color = Gray30, fontcolor=white]
+  
+  S->I[label='β']
+  I->R[label='γ']
+  I->D[label='μ']
+}
+")
+```
+
+
+| Compartment | Functional definition                                                                         |
+|-------------|-----------------------------------------------------------------------------------------------|
+| S           | Susceptible individuals                                                                       |
+| I           | Infected, confirmed symptomatic and infectious                                                |
+| R           | Recovered, immune from further infection                                                      |
+| D           | Case fatality (death due to COVID-19, not other causes)                                       |
+
+## Equations:
+
+
+$\displaystyle \frac{dS}{dt} = - \frac{\beta}{N}SI$  
+
+$\displaystyle \frac{dI}{dt} = \frac{\beta}{N}SI - \gamma I - \mu I$
+
+$\displaystyle \frac{dR}{dt} = \gamma I$
+
+$\displaystyle \frac{dD}{dt} = \mu I$
+
+
+```{r fig.cap='Overview of the comparison between fitted SIRD model and actual data'}
+SIRD <- function(time, state, parameters) {
+  par <- as.list(c(state, parameters))
+  
+  S=state[1]
+  I=state[2]
+  R=state[3]
+  D=state[4]
+
+  with(par, {
+    dS <- -beta_value * I * S /N
+    dI <- beta_value * I * S/N - gamma_value * I - mu_value * I
+    dR <- gamma_value * I 
+    dD <- mu_value * I
+    list(c(dS, dI, dR, dD))
+  })
+}
+
+
+init <- c(Susceptible = Susceptible, 
+          Infected = Infected, 
+          Recovered= Recovered, 
+          Deaths = Deaths)
+
+RSS <- function(parameters) {
+  
+  names(parameters) <- c("beta_value", "gamma_value", 'mu_value')
+  
+  out <- ode(y = init, 
+             times = seq(1,dim(Current_scenario[Current_scenario$date>reference_date,])[1]), 
+             func = SIRD, 
+             parms = parameters)
+  fit <- out[, 3]
+  sum((Current_scenario[Current_scenario$date>reference_date,]$Infected - fit)^2)
+}
+
+mu_0 <- Current_scenario %>% filter(Deaths >0) %>% summarize(mu_0 = mean((log(Deaths)/log(Infected))/time_from_zero)) %>%  pull(mu_0)
+gamma_0 <- 1/infectious_period
+beta_0 <- gamma_0*R0
+
+Opt <- optim(par = c(beta_0, gamma_0, mu_0), RSS, method = "L-BFGS-B", lower = c(beta_0*.5,.5*gamma_0,.5*mu_0), upper = c(2*beta_0,gamma_0*2,mu_0*2))
+
+Opt_par <- setNames(Opt$par, c("beta_value", "gamma_value", 'mu_value'))
+
+R0_est <- with(as.list(Opt_par), beta_value/(gamma_value + mu_value))
+
+fitted_cumulative_incidence <- data.frame(ode(y = init, 
+                                              times = Current_scenario[Current_scenario$date > reference_date, ]$time_from_zero, 
+                                              func = SIRD, parms = Opt_par))
+
+fitted_cumulative_incidence%>% 
+  as.data.frame()%>%
+  gather(Compartments, perc, -time) %>% 
+  ggplot(aes(x=time, y=perc, color=Compartments))+
+  ylim(c(0,100000))+
+  geom_line()+
+  geom_point(data = Current_scenario %>% 
+               gather(Compartments, perc, -time_from_zero, -date) %>% 
+               rename(time=time_from_zero))+
+  labs(title = 'SIRD fit model vs data')+
+  ylab('Cases')+
+  xlab('Time since beginning of recording (days)')+
+  ggpubr::theme_pubr()+
+  scale_color_manual(values = colorlist) 
+
+ggsave('Fig3.png', device = 'png', dpi = 'retina')
+```
+
+For this simulation, the $R_0$ value results equal to `r round(R0_est,2)`
+
+# Contact Tracing model
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, layout="l-page", fig.cap='Overview of the model flows used to simulate the contact tracing and self-isolation non-clinical procedure to curb the spread of COVID-19', screenshot.force = TRUE}
+grViz("
+digraph SESqIRD {
+
+  graph [overlap = false, fontsize = 10] #, rankdir = LR]
+
+  node [shape = box,
+        fontname = Times]
+  S[label='S=Susceptible',style = filled, color = white];
+  E[label='E=Exposed to infected, \nunsure if infectious',style = filled, color = OrangeRed, fontcolor=white];
+  Sq[label='Sq=Self-isolated \nTraced contacts',style = filled, color = LightSalmon, fontcolor=white];
+  I[label='I=Case confirmed',style = filled, color = Brown, fontcolor=white];
+  R[label='R=Recovered/immune',style = filled, color = CornFlowerBlue, fontcolor=white];
+  D[label='D=Case fatality',style = filled, color = Gray30, fontcolor=white]
+  
+  S->E[label='(1-p)β']
+  E->I[label='δ']
+  E->Sq[label='1-p']
+  Sq->I[label='δ']
+  I->R[label='γ']
+  I->D[label='μ']
+}
+")
+
+
+```
+
+| Compartment | Functional definition                                                                         |
+|-------------|-----------------------------------------------------------------------------------------------|
+| S           | Susceptible individuals                                                                       |
+| E           | Exposed to infection, unclear symptomatic conditions, potentially infectious                  |
+| I           | Infected, confirmed symptomatic and infectious                                                |
+| Sq          | Traced contacts, thus exposed but (self-)isolated                                             |
+| R           | Recovered, immune from further infection                                                      |
+| D           | Case fatality (death due to COVID-19, not other causes)                                       |
+
+Here we will consider $p$ as the percentage of adoption of the contact tracing digital solution among the _whole_ population. We are assuming that percentage of adoption corresponds to efficacy and tempestivity of use. Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
+
+## Equations:
+
+$\displaystyle \delta = \frac{1}{T_{lat}}$ 
+
+$\displaystyle \frac{dS}{dt} = - (1-p)\frac{\beta}{N}SI$  
+
+$\displaystyle \frac{dE}{dt} = (1-p)\frac{\beta}{N}SI- \delta E - pE$
+
+$\displaystyle \frac{dSq}{dt} = pE - \delta Sq$
+
+$\displaystyle \frac{dI}{dt} =  \delta E - \gamma I - \mu I + \delta Sq$
+
+$\displaystyle \frac{dR}{dt} = \gamma I$
+
+$\displaystyle \frac{dD}{dt} = \mu I$
+
+
+## Model
+
+```{r}
+
+SESQIRD <- function(current_timepoint, state_values, parameters){
+  
+  ## create state valriables
+  S  = state_values[["Susceptible"]]
+  E  = state_values[["Exposed"]] # exposed
+  Sq = state_values[['Self_Isolated']]
+  Is = state_values[["Infected"]]# infected symptomatic
+  R  = state_values[["Recovered"]] # recovered
+  D  = state_values[["Deaths"]] # recovered
+  
+  with(
+    as.list(parameters), 
+    {
+      results = c(
+        ## compute derivatives
+        dS = (-beta_value*(1-perc_app)/N) * S * Is,
+        dE =  (beta_value*(1-perc_app)/N) * S * Is - (delta_value * E) - perc_app * E,
+        dSQ = perc_app * E  - delta_value * Sq,
+        dI = (delta_value * E) - (gamma_value * Is) - (mu_value * Is) + delta_value * Sq,
+        dR = (gamma_value * Is), 
+        dD = (mu_value * Is)
+      )
+      
+      list(results)
+    }
+  )
+  
+}
+
+```
+
+```{r}
+res_ct <- tibble()
+for(percent_adoption in seq(0,.99,by = .1)){
+  
+  state_values <- c(Susceptible = Susceptible, 
+                    Exposed = (Infected * R0_est), #assumption
+                    Self_Isolated = Infected*percent_adoption,
+                    Infected = Infected, 
+                    Recovered= Recovered,
+                    Deaths = Deaths)
+
+  test_params = c(
+    beta_value = R0/infectious_period,
+    Opt_par[2],
+    Opt_par[3],
+    delta_value = 1/latent_period,
+    perc_app = percent_adoption
+  )
+  
+  out <- lsoda(y = state_values, times = seq(1,365), func = SESQIRD, parms = test_params)
+  
+  out <- out %>% 
+    as.data.frame()
+
+  res_ct <- res_ct %>%  
+      bind_rows(out %>% mutate(adoption=percent_adoption))
+}    
+```
+
+```{r, fig.height=8, fig.width=12, fig.cap='Change in distribution over time of the different epidemiological compartments, a) Infected, b) Deaths and c) Self-quarantined traced contacts depending on the increase of adoption rate of the contact tracing digital solution. It is possible to see that an adoption of 30% would more than halven the occurrences of infected cases and deaths. Dashed line represents the [estimated maximum ICU burden tolerable](https://www.statnews.com/2020/03/10/simple-math-alarming-answers-covid-19/) during the COVID-19 epidemic.'}
+
+Ct_infection_curves <- res_ct  %>% 
+  ggplot(aes(x=time, 
+             fill=as.factor(adoption),
+             color=as.factor(adoption)))+
+  geom_area(aes(y=Infected), pos='identity')+
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#AD002AFF", '#ffccd9'))(10), 
+                        aesthetics = 'fill', 
+                      name = 'Adoption percentage')+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#ffccd9',"#AD002AFF"))(10), 
+                        aesthetics = 'color', 
+                      name = 'Adoption percentage')+
+  xlab('Time since beginning of recording (days)') + 
+  ylab('Infected cases')+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,4e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+
+
+Ct_exp_curves <- res_ct  %>% 
+  ggplot(aes(x=time, 
+             fill=as.factor(adoption),
+             color=as.factor(adoption)))+
+  geom_area(aes(y=Exposed), pos='identity')+
+  ggpubr::theme_pubr()+
+   scale_discrete_manual(values = colorRampPalette(colors = c('#e09200',"#F2F5A9"))(10), 
+                        aesthetics = 'fill', 
+                        name = 'Intervention strength')+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#F2F5A9", '#e09200'))(10), 
+                        aesthetics = 'color', 
+                        name = 'Intervention strength')+
+  xlab('Time since beginning of recording (days)') + 
+  scale_y_continuous(labels = unit_format(unit = "M", scale =  1e-6), limits = c(0,4e7))+
+  ylab('Exposed')+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+
+Ct_Sq_curves <- res_ct  %>% 
+  ggplot(aes(x=time, 
+             fill=as.factor(adoption), 
+             color=as.factor(adoption)))+
+  geom_area(aes(y=Self_Isolated), pos='identity', 
+                        alpha=.9)+
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#E2A76F",'#FFFFD3'))(10), 
+                        aesthetics = 'fill', breaks = seq(.1,.9, by=.1),
+                        name = 'Adoption percentage')+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#FFFFD3',"#E2A76F"))(10), 
+                        aesthetics = 'color', breaks = seq(.1,.9, by=.1), 
+                        name = 'Adoption percentage')+
+  xlab('Time since beginning of recording (days)') + 
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+  ylab('Self-isolated contacts')
+
+ggarrange(
+  ggarrange(Ct_infection_curves, Ct_exp_curves, labels=c('A','B'))
+   ,Ct_Sq_curves, labels=c('','C'), nrow = 2)
+
+ggsave('Fig5.png', device = 'png', dpi = 'retina', width = 12, height = 8, unit = 'in')
+```
+
+
+```{r results='asis'}
+res_ct %>%
+  group_by(adoption) %>% 
+  arrange(desc(adoption)) %>% 
+  summarize_all(~max(.)*N) %>% 
+  mutate_all(unit_format(scale=1e-3, suffix = 'k', )) %>% 
+  select(adoption, max_infected = Infected, max_death=Deaths) %>% 
+  kable("latex", booktabs = T, 
+        caption = 'Estimated decrease of peak disease impact indicators, thanks to the deployment of platform for capillar contact tracing during the COVID-19 epidemic in the United States') %>%
+  kable_styling(latex_options = "striped", bootstrap_options = c("condensed")) 
+```
+
+
+
+# CLassic societal intervention model
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, layout="l-page", fig.cap='Overview of the model flows used to simulate the government-imposed non-clinical procedure to curb the spread of COVID-19', screenshot.force = TRUE}
+grViz("
+digraph SEGIRD {
+
+  graph [overlap = false, fontsize = 10] #, rankdir = LR]
+
+  node [shape = box,
+        fontname = Times]
+  S[label='S=Susceptible',style = filled, color = white];
+  Q[label='Q =Social distancing, \nlockdown',style = filled, color = SlateBlue, fontcolor=white];
+  E[label='E=Exposed to infected, \nunsure if infectious',style = filled, color = OrangeRed, fontcolor=white];
+  I[label='I=Case confirmed',style = filled, color = Brown, fontcolor=white];
+  R[label='R=Recovered/immune',style = filled, color = CornFlowerBlue, fontcolor=white];
+  D[label='D=Case fatality',style = filled, color = Gray30, fontcolor=white]
+  
+  S->E[label='(1-g)β']
+  S ->Q[label='gθ']
+  Q -> R[label='θ']
+  E->I[label='δ']
+  I->R[label='γ']
+  I->D[label='μ']
+}
+")
+```
+
+
+| Compartment | Functional definition                                                                         |
+|-------------|-----------------------------------------------------------------------------------------------|
+| S           | Susceptible individuals                                                                       |
+| E           | Exposed to infection, unclear symptomatic conditions, potentially infectious                  |
+| I           | Infected, confirmed symptomatic and infectious                                                |
+| Q           | Isolated from the rest of the population through forced measures. Unclear clinical definition |
+| R           | Recovered, immune from further infection                                                      |
+| D           | Case fatality (death due to COVID-19, not other causes)                                       |
+
+
+Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention of half the current observed time, 40 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
+
+
+## Equations:
+
+$\displaystyle \theta = \frac{1}{T_{intervention}}$ 
+
+$\displaystyle \frac{dS}{dt} = - (1-g)\frac{\beta}{N}SI - g\theta S$  
+
+$\displaystyle \frac{dQ}{dt} = g\theta S - \theta Q$  
+
+$\displaystyle \frac{dE}{dt} = (1-g)\frac{\beta}{N}SI - \delta E$
+
+$\displaystyle \frac{dI}{dt} =  \delta E - \gamma I - gI$
+
+$\displaystyle \frac{dR}{dt} = \gamma I + \theta Q$
+
+$\displaystyle \frac{dD}{dt} = \mu I$
+
+
+## Model
+
+```{r}
+SEGIRD <- function(current_timepoint, state_values, parameters){
+  
+  ## create state valriables
+  S  = state_values[["Susceptible"]]
+  Q = state_values[['Quarantined']]
+  E  = state_values[["Exposed"]] # exposed
+  Is = state_values[["Infected"]]# infected symptomatic
+  R  = state_values[["Recovered"]] # recovered
+  D  = state_values[["Deaths"]] # recovered
+  
+  with(
+    as.list(parameters), 
+    {
+      ## compute derivatives
+     results = c(
+       
+       dS = -beta_value * (1-gov_p) * S * Is - gov_p*S*theta,
+       dQ = gov_p*S*theta - Q*theta, 
+       dE = beta_value * (1-gov_p)* S * Is - delta_value * E,
+       dI = (delta_value * E) - (gamma_value * Is)  - (mu_value * Is),
+       dR = (gamma_value * Is) + Q*theta,
+       dD = (mu_value * Is)
+      
+     )
+      
+      list(results)
+    }
+  )
+  
+}
+
+```
+
+```{r}
+res_ga <- tibble()
+
+for (government_intervention in seq(0.0, 0.99, by=.1)) {
+  
+  state_values <- c(Susceptible = Susceptible/N,
+                    Quarantined = 0,
+                    Exposed = (Infected * R0_est)/N , #assumption
+                    Infected = Infected/N, 
+                    Recovered= Recovered/N,
+                    Deaths = Deaths/N) 
+
+
+  test_params = c(
+    beta_value = R0/infectious_period,
+    Opt_par[2],
+    Opt_par[3],
+    delta_value = 1/latent_period,
+    gov_p = government_intervention, 
+    theta = 1/(obs_time/2)
+    )
+  
+  out <- lsoda(y = state_values, times = seq(1,350), func = SEGIRD, parms = test_params)
+  
+  out <- out %>% 
+    as.data.frame()
+
+  res_ga <- res_ga %>%  
+      bind_rows(out %>% mutate(government_intervention=government_intervention))
+    
+}
+```
+
+```{r, fig.height=8, fig.width=12, fig.cap='Change in distribution over time of the different epidemiological compartments, a) Infected, b) Exposed and c) Quarantined individuals depending on the increase of government intervention. The curves show that slightly stronger intervention measures are necessary to reach similar decrease in incidence across the population but impacting much more people, as they are applied aspecifically. Dashed line represents the [estimated maximum ICU burden tolerable](https://www.statnews.com/2020/03/10/simple-math-alarming-answers-covid-19/) during the COVID-19 epidemic'}
+
+Ga_infection_curves <- res_ga  %>% 
+  ggplot(aes(x=time, 
+             fill=as.factor(government_intervention), 
+             color=as.factor(government_intervention)))+
+  geom_area(aes(y=Infected*N), pos='identity')+
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#AD002AFF", '#ffccd9'))(10), 
+                        aesthetics = 'fill', 
+                      name = 'Intervention strength')+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#ffccd9',"#AD002AFF"))(10), 
+                        aesthetics = 'color', 
+                      name = 'Intervention strength')+
+  xlab('Time since beginning of recording (days)') + 
+  ylab('Infected cases')+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,4e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+
+
+Ga_exp_curves <- res_ga  %>% 
+  mutate(government_intervention=as.factor(government_intervention)) %>% 
+  ggplot(aes(x=time, 
+             fill=government_intervention, 
+             color=government_intervention))+
+  geom_area(aes(y=Exposed*N), pos='identity')+
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#e09200',"#F2F5A9"))(10), 
+                        aesthetics = 'fill', 
+                        name = 'Intervention strength')+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#F2F5A9", '#e09200'))(10), 
+                        aesthetics = 'color', 
+                        name = 'Intervention strength')+
+  xlab('Time since beginning of recording (days)') + 
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,4e7))+
+  ylab('Exposed')+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+
+Ga_Gq_curves <- res_ga  %>% 
+  mutate(government_intervention=as.factor(government_intervention)) %>% 
+  ggplot(aes(x=time, 
+             fill=government_intervention, 
+             color=government_intervention))+
+  geom_area(aes(y=Quarantined*N, 
+            fill= fct_reorder(government_intervention, Quarantined, .desc = TRUE)), 
+            position = 'identity') +
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#925E9FFF",'#cbb3d1'))(10), 
+                        aesthetics = 'fill', breaks = seq(.1,.9, by=.1),
+                        name = 'Intervention strength')+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#cbb3d1',"#925E9FFF"))(10), 
+                        aesthetics = 'color', breaks = seq(.1,.9, by=.1), 
+                        name = 'Intervention strength')+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6))+
+  xlab('Time since beginning of recording (days)') + 
+  ylab('Quarantined \nindividuals')
+
+ggarrange(ggarrange(Ga_infection_curves, Ga_exp_curves, labels=c('A','B')), 
+  direct.label(Ga_Gq_curves, method = 'top.bumptwice'), labels=c('','C'), nrow = 2)
+
+
+ggsave('Fig7.png', device = 'png', dpi = 'retina', width = 12, height = 8, unit = 'in')
+
+
+```
+
+```{r results='asis'}
+
+res_ga %>%
+  group_by(government_intervention) %>% 
+  arrange(desc(government_intervention)) %>% 
+  summarize_all(~max(.)*N) %>% 
+  mutate_all(unit_format(scale=1e-3, suffix = 'k', )) %>% 
+  select(government_intervention, max_infected = Infected, max_death=Deaths, max_q = Quarantined) %>% 
+  kable("latex", booktabs = T, 
+        caption = 'Estimated decrease of peak disease impact indicators after imposing external non-clinical intervention on the population to limit the spread of Covid-19') %>%
+  kable_styling(latex_options = "striped", bootstrap_options = c("condensed")) 
+```
+
+```{r fig.width=12, fig.height=15, fig.cap='Comparison between the Contact tracing model (left) and the traditional intervention model (right) on the impact to limit the spread of COVID-19 in the United States. Plot shows the distribution of the modeled Infected (a,b), Exposed (c,d), Self-Isolated (e) and Quarantined (f) compartments. Impact of both measures in limiting the number of infected and exposed is comparable. It is possible to notice the high and long-term impact on the global population in the traditional intervention model, whereas the self-quarantine compartment from the contact tracing app results much smaller. '}
+p<- ggarrange(
+  ggarrange(Ct_infection_curves + 
+              guides(color=guide_legend(title = 'Percentage'),
+                     fill=guide_legend(title = 'Percentage')), 
+            Ga_infection_curves, 
+            nrow=1, 
+            common.legend = T, 
+            legend = 'bottom',
+            labels = c('a', 'b')),
+  ggarrange(Ct_exp_curves+  
+              guides(color=guide_legend(title = 'Percentage'),
+                     fill=guide_legend(title = 'Percentage'))+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,4e7)), 
+            Ga_exp_curves+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,4e7)), 
+            nrow=1, 
+            common.legend = T, 
+            legend = 'bottom',
+            labels = c('c', 'd')),
+  ggarrange(Ct_Sq_curves+ 
+              guides(color=guide_legend(title = 'Percentage'),
+                     fill=guide_legend(title = 'Percentage'))+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.2e8)), 
+            Ga_Gq_curves+ 
+              guides(color=guide_legend(title = 'Percentage'),
+                     fill=guide_legend(title = 'Percentage'))+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.2e8))+
+              geom_dl(aes(label=government_intervention, y=Quarantined*N), method='top.bumptwice'), 
+            nrow=1, 
+            common.legend = F, 
+            legend = 'bottom',
+            labels = c('e', 'f')), 
+          nrow=3)
+p
+
+ggsave('Fig8.png', device = 'png', dpi = 'retina', width = 12, height = 15, unit = 'in')
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+sessionInfo()
+```
