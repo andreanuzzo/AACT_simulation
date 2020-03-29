@@ -242,15 +242,6 @@ SESQIRD <- function(current_timepoint, state_values, parameters){
   
 }
 
-test_params = c(
-  Opt_par[1]*(1-percent_adoption),
-  Opt_par[2],
-  Opt_par[3],
-  delta_value = 1/latent_period,
-  perc_app = percent_adoption
-)
-  
-
 state_values <- c(Susceptible = Susceptible, 
                   Exposed = Infected * contact_rate,
                   Self_Isolated = 1,
