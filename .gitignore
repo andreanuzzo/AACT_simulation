@@ -42,4 +42,5 @@ vignettes/*.pdf
 *.pdf
 *.html
 *.png
+*.log
 
