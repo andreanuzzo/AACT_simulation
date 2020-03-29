@@ -40,3 +40,6 @@ vignettes/*.pdf
 
 # Knittings
 *.pdf
+*.html
+*.png
+
