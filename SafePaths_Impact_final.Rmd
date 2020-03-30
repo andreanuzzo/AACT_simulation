@@ -4,8 +4,10 @@ author: "Andrea Nuzzo"
 date: "`r Sys.Date()`"
 output:
   pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
+    latex_engine: xelatex
     toc: yes
-    fig_caption: true
   html_document: default
 ---
 
@@ -16,7 +18,7 @@ output:
 </style>
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(eval = TRUE, echo = T, warning = F, message = F)
+knitr::opts_chunk$set(eval = TRUE, echo = F, warning = F, message = F)
 ```
 
 
@@ -213,8 +215,8 @@ SIRD <- function(time, state, parameters) {
   D=state[4]
 
   with(par, {
-    dS <- -beta_value * I * S /N
-    dI <- beta_value * I * S/N - gamma_value * I - mu_value * I
+    dS <- -beta_value/N * I * S 
+    dI <- beta_value /N* I * S - gamma_value * I - mu_value * I
     dR <- gamma_value * I 
     dD <- mu_value * I
     list(c(dS, dI, dR, dD))
@@ -243,11 +245,9 @@ mu_0 <- Current_scenario %>% filter(Deaths >0) %>% summarize(mu_0 = mean((log(De
 gamma_0 <- 1/infectious_period
 beta_0 <- gamma_0*R0
 
-Opt <- optim(par = c(beta_0, gamma_0, mu_0), RSS, method = "L-BFGS-B", lower = c(beta_0*.5,.5*gamma_0,.5*mu_0), upper = c(2*beta_0,gamma_0*2,mu_0*2))
+Opt <- optim(par = c(beta_0, gamma_0, mu_0), RSS, method = "L-BFGS-B", lower = c(beta_0*.5,.5*gamma_0,.05*mu_0), upper = c(2*beta_0,gamma_0*2,mu_0*.2))
 
 Opt_par <- setNames(Opt$par, c("beta_value", "gamma_value", 'mu_value'))
-
-R0_est <- with(as.list(Opt_par), beta_value/(gamma_value + mu_value))
 
 fitted_cumulative_incidence <- data.frame(ode(y = init, 
                                               times = Current_scenario[Current_scenario$date > reference_date, ]$time_from_zero, 
@@ -345,32 +345,29 @@ SESQIRD <- function(current_timepoint, state_values, parameters){
   D  = state_values[["Deaths"]] # recovered
   
   with(
-    as.list(parameters), 
-    {
+    as.list(parameters), {
       results = c(
-        ## compute derivatives
+
+
         dS = (-beta_value*(1-perc_app)/N) * S * Is,
-        dE =  (beta_value*(1-perc_app)/N) * S * Is - (delta_value * E) - perc_app * E,
-        dSQ = perc_app * E  - delta_value * Sq,
-        dI = (delta_value * E) - (gamma_value * Is) - (mu_value * Is) + delta_value * Sq,
-        dR = (gamma_value * Is), 
+        dE = (beta_value*(1-perc_app)/N) * S * Is - (delta_value * E) - perc_app * E, dSQ = perc_app * E - delta_value * Sq,
+        dI = (delta_value * E) - (gamma_value * Is) - (mu_value * Is) + delta_value * Sq, dR = (gamma_value * Is),
         dD = (mu_value * Is)
       )
-      
-      list(results)
-    }
-  )
+      list(results) }
+  ) 
   
 }
 
 ```
+
 
 ```{r}
 res_ct <- tibble()
 for(percent_adoption in seq(0,.99,by = .1)){
   
   state_values <- c(Susceptible = Susceptible, 
-                    Exposed = (Infected * R0_est), #assumption
+                    Exposed = (Infected * R0), #assumption
                     Self_Isolated = Infected*percent_adoption,
                     Infected = Infected, 
                     Recovered= Recovered,
@@ -393,6 +390,7 @@ for(percent_adoption in seq(0,.99,by = .1)){
       bind_rows(out %>% mutate(adoption=percent_adoption))
 }    
 ```
+
 
 ```{r, fig.height=8, fig.width=12, fig.cap='Change in distribution over time of the different epidemiological compartments, a) Infected, b) Deaths and c) Self-quarantined traced contacts depending on the increase of adoption rate of the contact tracing digital solution. It is possible to see that an adoption of 30% would more than halven the occurrences of infected cases and deaths. Dashed line represents the [estimated maximum ICU burden tolerable](https://www.statnews.com/2020/03/10/simple-math-alarming-answers-covid-19/) during the COVID-19 epidemic.'}
 
@@ -452,18 +450,18 @@ ggarrange(
   ggarrange(Ct_infection_curves, Ct_exp_curves, labels=c('A','B'))
    ,Ct_Sq_curves, labels=c('','C'), nrow = 2)
 
-ggsave('Fig5.png', device = 'png', dpi = 'retina', width = 12, height = 8, unit = 'in')
+# ggsave('Fig5.png', device = 'png', dpi = 'retina', width = 12, height = 8, unit = 'in')
 ```
 
 
-```{r results='asis'}
+```{r}
 res_ct %>%
   group_by(adoption) %>% 
   arrange(desc(adoption)) %>% 
-  summarize_all(~max(.)*N) %>% 
-  mutate_all(unit_format(scale=1e-3, suffix = 'k', )) %>% 
-  select(adoption, max_infected = Infected, max_death=Deaths) %>% 
-  kable("latex", booktabs = T, 
+  summarize_all(~max(.)) %>% 
+  select(adoption, max_infected = Infected, max_death=Deaths, max_Sq = Self_Isolated) %>% 
+  mutate_at(vars(-adoption), unit_format(scale=1e-3, suffix = 'k')) %>%
+  kable("html", booktabs = T, 
         caption = 'Estimated decrease of peak disease impact indicators, thanks to the deployment of platform for capillar contact tracing during the COVID-19 epidemic in the United States') %>%
   kable_styling(latex_options = "striped", bootstrap_options = c("condensed")) 
 ```
