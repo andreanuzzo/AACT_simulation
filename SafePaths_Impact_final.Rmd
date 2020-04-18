@@ -3,6 +3,8 @@ title: "SafePaths estimated impact over the course of COVID-19 2020 epidemic in 
 author: "Andrea Nuzzo"
 date: "`r Sys.Date()`"
 output:
+  word_document:
+    reference_docx: "template.docx"
   pdf_document: 
     fig_caption: yes
     keep_tex: yes
@@ -38,7 +40,7 @@ library(kableExtra)
 library(scales)
 library(directlabels)
 library(gg.gap)
-
+library(janitor)
 
 set.seed(42)
 
@@ -127,12 +129,12 @@ In this framework we analyze two possibilities to implement non-clinical procedu
 
 ```{r}
 # Choices
-obs_time = 80
-reference_date <- Sys.Date()-15
+obs_time = 365
+reference_date <- date('2020-03-15')
 timepoints = seq(0, obs_time, by = .5)
 
 # Pre-assumed parameters
-R0 = 3.02 
+R0 = 3.02
 infectious_period = 2.9
 latent_period = 5.2 
 
@@ -144,31 +146,24 @@ Deaths= Current_scenario[Current_scenario$date>reference_date,]$Deaths[1]
 
 Susceptible = N - Current_scenario[Current_scenario$date>reference_date,]$Infected[1]
 
+mu_0 <- .057/14
+gamma_0 <- 1/infectious_period
+beta_0 <- R0*gamma_0
 
 ```
 
 
 We assume the following initial parameters: 
 
-- $T_{inf}$ = Duration of the _infectious_period (~2.9 days, from literature)
+- $T_{inf}$ = Duration of the _infectious_period_ (~2.9 days, from literature)
 
 - $T_{lat}$ = Latency period before development of symptoms (~ 5.2, averaged from [literature](https://www.eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.5.2000062))
 
-- Basic $R_0$ = `r R0` from [](https://doi.org/10.1016/S2214-109X%2820%2930113-3)
+- Basic $R_0$ = `r R0` from [Majumder & Mandi (2020)](https://doi.org/10.1016/S2214-109X%2820%2930113-3)
 
 Preliminary death rate $\mu = 0.057$ (1% estimated by [Baud et al. 2020](https://doi.org/10.1016/S1473-3099%2820%2930195-X) in the early phase of the disease)
-
+ 
 $\beta$ imputed from the definition of $\displaystyle R_{0}= \frac{\beta}{\gamma}$
-
-
-
-```{r fig.cap='Overview of the comparison between fitted SIRD model and actual data'}
-
-mu_0 <- 0.057
-gamma_0 <- 1/infectious_period
-beta_0 <- R0*gamma_0
-
-```
 
 # AACT model
 
@@ -187,9 +182,9 @@ digraph SESqIRD {
   R[label='R=Recovered/immune',style = filled, color = CornFlowerBlue, fontcolor=white];
   D[label='D=Case fatality',style = filled, color = Gray30, fontcolor=white]
   
-  S->E[label='(1-p)β']
+  S->E[label='(1-p⍺)β']
   E->I[label='δ']
-  E->Sq[label='1-p']
+  E->Sq[label='1-p⍺']
   Sq->I[label='δ']
   I->R[label='γ']
   I->D[label='μ']
@@ -208,15 +203,15 @@ digraph SESqIRD {
 | R           | Recovered, immune from further infection                                                      |
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
-Here we will consider $p$ as the percentage of adoption of the contact tracing digital solution among the _whole_ population. We are assuming that percentage of adoption corresponds to efficacy and tempestivity of use. Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
+Here we will consider $p$ as the percentage of adoption of the contact tracing digital solution among the _whole_ population and $\alpha\$ the percentage of population _with_ the app that would eventually follow the recommendation and self-isolate. We are assuming that percentage of responsible use corresponds to efficacy and tempestivity of isolation Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
 
 ## Equations:
 
 $\displaystyle \delta = \frac{1}{T_{lat}}$ 
 
-$\displaystyle \frac{dS}{dt} = - (1-p)\frac{\beta}{N}SI$  
+$\displaystyle \frac{dS}{dt} = - (1-p\alpha)\frac{\beta}{N}SI$  
 
-$\displaystyle \frac{dE}{dt} = (1-p)\frac{\beta}{N}SI- \delta E - pE$
+$\displaystyle \frac{dE}{dt} = (1-p\alpha)\frac{\beta}{N}SI- \delta E - pE$
 
 $\displaystyle \frac{dSq}{dt} = pE - \delta Sq$
 
@@ -280,7 +275,7 @@ for(percent_adoption in seq(0,.99,by = .1)){
     perc_app = percent_adoption
   )
   
-  out <- lsoda(y = state_values, times = seq(1,300), func = SESQIRD, parms = test_params)
+  out <- lsoda(y = state_values, times = seq(1,obs_time), func = SESQIRD, parms = test_params)
   
   out <- out %>% 
     as.data.frame()
@@ -288,6 +283,8 @@ for(percent_adoption in seq(0,.99,by = .1)){
   res_ct <- res_ct %>%  
       bind_rows(out %>% mutate(adoption=percent_adoption))
 }    
+
+
 ```
 
 
@@ -307,8 +304,9 @@ Ct_infection_curves <- res_ct  %>%
                       name = 'Adoption percentage')+
   xlab('Time since beginning of recording (days)') + 
   ylab('Infected')+
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3e7))+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
+  xlim(c(0,200))
 
 
 Ct_exp_curves <- res_ct  %>% 
@@ -324,9 +322,10 @@ Ct_exp_curves <- res_ct  %>%
                         aesthetics = 'color', 
                         name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
-  scale_y_continuous(labels = unit_format(unit = "M", scale =  1e-6), limits = c(0,6e7))+
+  scale_y_continuous(labels = unit_format(unit = "M", scale =  1e-6), limits = c(0,7e7))+
   ylab('Exposed')+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
+  xlim(c(0,200))
 
 Ct_Sq_curves <- res_ct  %>% 
   ggplot(aes(x=time, 
@@ -404,7 +403,7 @@ digraph SEGIRD {
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
 
-Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention of half the current observed time, 40 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
+Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention 50 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
 
 
 ## Equations:
@@ -479,10 +478,10 @@ for (government_intervention in seq(0.0, 0.99, by=.1)) {
     mu_value = mu_0,
     delta_value = 1/latent_period,
     gov_p = government_intervention, 
-    theta = 1/(obs_time/2)
+    theta = 1/(50)
     )
   
-  out <- lsoda(y = state_values, times = seq(1,350), func = SEGIRD, parms = test_params)
+  out <- lsoda(y = state_values, times = seq(1,obs_time), func = SEGIRD, parms = test_params)
   
   out <- out %>% 
     as.data.frame()
@@ -509,8 +508,9 @@ Ga_infection_curves <- res_ga  %>%
                       name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
   ylab('Infected')+
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3e7))+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
+  xlim(c(0,200))
 
 
 Ga_exp_curves <- res_ga  %>% 
@@ -527,9 +527,10 @@ Ga_exp_curves <- res_ga  %>%
                         aesthetics = 'color', 
                         name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,6e7))+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7))+
   ylab('Exposed')+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
+  xlim(c(0,200))
 
 Ga_Gq_curves <- res_ga  %>% 
   mutate(government_intervention=as.factor(government_intervention)) %>% 
@@ -587,9 +588,9 @@ p<- ggarrange(
   ggarrange(Ct_exp_curves+  
               guides(color=guide_legend(title = 'Percentage', nrow=1),
                      fill=guide_legend(title = 'Percentage', nrow=1))+
-              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,6e7)), 
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7)), 
             Ga_exp_curves+
-              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,6e7)), 
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7)), 
             nrow=1, 
             common.legend = T, 
             legend = 'bottom',
@@ -613,6 +614,152 @@ p
 ggsave('Fig8.png', device = 'png', dpi = 'retina', width = 12, height = 15, unit = 'in')
 
 ```
+
+
+```{r warning=FALSE}
+res_cta <- tibble()
+for(percent_adoption in seq(0,.99,by = .1)){
+  for(alpha_adoption in seq(0, .99, by = .1 )){
+  
+    state_values <- c(Susceptible = Susceptible/N, 
+                      Exposed = (Infected * R0)/N, #assumption
+                      Self_Isolated = 0,
+                      Infected = Infected/N, 
+                      Recovered= Recovered/N,
+                      Deaths = Deaths/N)
+  
+    test_params = c(
+      beta_value = beta_0,
+      gamma_value = gamma_0,
+      mu_value = mu_0,
+      delta_value = 1/latent_period,
+      perc_app = percent_adoption * alpha_adoption
+    )
+    
+    out <- lsoda(y = state_values, times = seq(1,obs_time), func = SESQIRD, parms = test_params)
+    
+    out <- out %>% 
+      as.data.frame()
+    
+    # Rs<- estimate_R(as.incidence(out$Infected*N,
+    #                         dates = out$time+ reference_date), 
+    #                     method= 'parametric_si',
+    #                     config = make_config(list(
+    #                       mean_si = 4.7, 
+    #                       std_si = 2.9)))
+    
+    
+  
+    res_cta <- res_cta %>%  
+      bind_rows(out %>% 
+                  mutate(pop_adoption=percent_adoption, 
+                         pop_responsibility = alpha_adoption) #%>% left_join(Rs$R, by = c('time'='t_end'))
+                            
+      )
+  } 
+}
+
+
+```
+
+```{r eval=FALSE, warning=FALSE, include=FALSE}
+res_cta<- res_cta %>% 
+  janitor::clean_names()
+
+res_cta %>% 
+  # group_by(pop_responsibility, pop_adoption) %>% 
+  # filter(Infected==max(Infected)) %>% 
+  # summarize(R=min(`Mean(R)`, na.rm = T)) %>% 
+  ggplot()+
+  aes(x=pop_responsibility, y = pop_adoption, fill=mean_r) + 
+  geom_raster(interpolate = T) +
+  # scale_fill_gradientn(colours = c('white', colorlist[['Infected']]), 
+                       # name = 'Peak infected', 
+                       # labels = unit_format(unit = "M", scale = 1e-6)
+                       # name = 'R (per day)')+
+  theme_minimal()+
+  scale_fill_viridis_c()
+
+
+ggsave(filename = 'Heatmap.png', device = 'png', width = 21, height = 10, units = 'cm')
+  
+res_cta %>% 
+  group_by(pop_adoption, pop_responsibility) %>% 
+  summarize(r=max(mean_r, na.rm = T)) %>% 
+  ggplot()+
+  aes(x=pop_adoption, y=pop_responsibility, z=r) +
+  stat_contour(geom = 'polygon', aes(fill = ..level..)) + 
+  geom_raster(aes(fill = r), interpolate=T) +
+  stat_contour(binwidth = .25)+
+  scale_fill_viridis_c()+
+  theme_minimal()
+
+```
+
+```{r}
+library(plotly)
+# z<- res_cta %>% 
+#   select(time, pop_adoption, pop_responsibility, mean_r) %>% 
+#   spread(key=pop_adoption, value = mean_r) %>% 
+#   as.matrix()
+#   
+res_cta %>% 
+  clean_names() %>% 
+  mutate(self_isolated=N*self_isolated) %>% 
+  group_by(pop_responsibility, pop_adoption) %>% 
+  # summarize(r=mean(mean_r, na.rm = T)) %>%
+  filter(infected==max(infected)) %>%
+  plot_ly(.,
+        x=~pop_responsibility, 
+        y=~pop_adoption, 
+        z=~self_isolated, 
+        type = 'contour', 
+        line = list(smoothing = 0.85), 
+        contours = list(showlabels = TRUE), 
+        colors = 'YlGnBu', 
+        colorbar=list(
+          title='Self-isolated'), 
+      reversescale =T)  %>% 
+  layout(xaxis = list(
+    title = "Responsible use (⍺)"), 
+    yaxis = list(
+    title = "Adoption (p)"))
+  
+
+```
+
+
+
+```{r eval=FALSE, fig.height=21, fig.width=7, include=FALSE}
+
+v <- res_cta  %>% 
+  mutate(pop_adoption=as.factor(pop_adoption)) %>% 
+  filter(time<150) %>% 
+  ggplot(aes(x=time, 
+             fill=pop_adoption,
+             color=pop_adoption))+
+  geom_area(aes(y=Infected*N), pos='identity', alpha=.8)+
+  ggpubr::theme_pubr()+
+  scale_discrete_manual(values = colorRampPalette(colors = c("#AD002AFF", '#ffccd9'))(10), 
+                        aesthetics = 'fill', 
+                      name = 'Adoption percentage')+
+  scale_discrete_manual(values = colorRampPalette(colors = c('#ffccd9',"#AD002AFF"))(10), 
+                        aesthetics = 'color', 
+                      name = 'Adoption percentage')+
+  xlab('Time since beginning of recording (days)') + 
+  ylab('Infected')+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
+  facet_grid(rows = 'pop_responsibility') 
+
+direct.label(v, method = 'top.bumptwice')
+
+ggsave(filename = 'Curves.png', device = 'png', height = 21, width = 10)
+
+```
+
+
+
 
 ```{r eval=FALSE, include=FALSE}
 sessionInfo()
