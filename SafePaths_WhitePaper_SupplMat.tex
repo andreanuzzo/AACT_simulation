@@ -24,8 +24,8 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{hyperref}
 \hypersetup{unicode=true,
-            pdftitle={SafePaths estimated impact over the course of COVID-19 2020 epidemic in the US},
-            pdfauthor={Andrea Nuzzo},
+            pdftitle={Supplemental Material: Universal Shelter-in-place vs.~Advanced Automated Contact Tracing and Targeted Isolation: A Case for 21st-Century Technologies for COVID-19 and Future Pandemics},
+            pdfauthor={Andrea Nuzzo, Can Ozan Tan, Ramesh Raskar, Rajiv Gupta},
             pdfborder={0 0 0},
             breaklinks=true}
 \urlstyle{same}  % don't use monospace font for urls
@@ -75,11 +75,12 @@
 
 \setlength{\droptitle}{-2em}
 
-  \title{SafePaths estimated impact over the course of COVID-19 2020
-epidemic in the US}
+  \title{Supplemental Material: Universal Shelter-in-place vs.~Advanced
+Automated Contact Tracing and Targeted Isolation: A Case for
+21st-Century Technologies for COVID-19 and Future Pandemics}
     \pretitle{\vspace{\droptitle}\centering\huge}
   \posttitle{\par}
-    \author{Andrea Nuzzo}
+    \author{Andrea Nuzzo, Can Ozan Tan, Ramesh Raskar, Rajiv Gupta}
     \preauthor{\centering\large\emph}
   \postauthor{\par}
       \predate{\centering\large\emph}
@@ -101,23 +102,21 @@ epidemic in the US}
 \usepackage{makecell}
 \usepackage{xcolor}
 
+\renewcommand{\figurename}{Supplemental Figure}
+
 \begin{document}
 \maketitle
 
-{
-\setcounter{tocdepth}{2}
-\tableofcontents
-}
-\hypertarget{situation-as-of-2020-03-31}{%
-\section{Situation as of 2020-03-31}\label{situation-as-of-2020-03-31}}
+\hypertarget{data}{%
+\section{Data}\label{data}}
 
 Data are collected from the GitHub repo of the
 \href{https://doi.org/10.1016/S1473-3099(20)30120-1}{JHU CSSE COVID-19
-team}
+team} on 2020-03-31
 
 \begin{figure}
 \centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-2-1.pdf}
+\includegraphics{./SafePaths_WhitePaper_SupplMat_files/figure-latex/unnamed-chunk-2-1.eps}
 \caption{Overview of cases, recoveries and fatalities in the US
 population during the CIVID-19 pandemic as of \texttt{r\ Sys.Date()}}
 \end{figure}
@@ -129,19 +128,21 @@ In this framework we analyze two possibilities to implement non-clinical
 procedures to stop the spread of the epidemic:
 
 \begin{itemize}
-\tightlist
 \item
   Advanced contact tracing: Through AACT, it is possible to inform
   Exposed (asymptomatic/non-infected) members of the community of the
   exposure risk. Once warned, they would ideally self-isolate themselves
   and prevent second-order spreading of the contagion. Therefore,
   self-isolated contacts will depend on the AACT penetrance \emph{p} in
-  both the Infected and the Exposed population. We are assuming efficacy
-  100\% (or rather, traced contacts receiving warnings and not
-  self-isolating would pose as much risk as non-traced contacts).
-  Self-isolated members might still develop symptoms. The percentage of
-  AACT penetration will also limit the further exposure, thus reducing
-  the \(\beta\) transition between Susceptible and Exposed.
+  both the Infected and the Exposed population.
+\item
+  We are assuming efficacy 100\% (or rather, traced contacts receiving
+  warnings and not self-isolating would pose as much risk as non-traced
+  contacts). Self-isolated members might still develop symptoms.
+\item
+  The percentage of AACT penetration will also limit the further
+  exposure, thus reducing the \(\beta\) transition between Susceptible
+  and Exposed.
 \item
   Traditional measures: in order to stop the contagion, authorities
   might recur to enforce social distancing through different measures,
@@ -179,16 +180,10 @@ al.~2020} in the early phase of the disease)
 \(\beta\) imputed from the definition of
 \(\displaystyle R_{0}= \frac{\beta}{\gamma}\)
 
+\newpage
+
 \hypertarget{aact-model}{%
 \section{AACT model}\label{aact-model}}
-
-\begin{figure}
-\centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-5-1.pdf}
-\caption{Overview of the model flows used to simulate the contact
-tracing and self-isolation non-clinical procedure to curb the spread of
-COVID-19}
-\end{figure}
 
 \begin{longtable}[]{@{}ll@{}}
 \toprule
@@ -239,9 +234,6 @@ assuming that percentage of adoption corresponds to efficacy and
 tempestivity of use. Moreover, we do not model the second and
 third-grade exposure risks from the first contacts for simplicity.
 
-\hypertarget{equations}{%
-\subsection{Equations:}\label{equations}}
-
 \(\displaystyle \delta = \frac{1}{T_{lat}}\)
 
 \(\displaystyle \frac{dS}{dt} = - (1-p)\frac{\beta}{N}SI\)
@@ -256,12 +248,17 @@ third-grade exposure risks from the first contacts for simplicity.
 
 \(\displaystyle \frac{dD}{dt} = \mu I\)
 
-\hypertarget{model}{%
-\subsection{Model}\label{model}}
+\begin{figure}
+\centering
+\includegraphics{SafePaths_WhitePaper_SupplMat_files/figure-latex/unnamed-chunk-5-1.eps}
+\caption{Overview of the model flows used to simulate the contact
+tracing and self-isolation non-clinical procedure to curb the spread of
+COVID-19}
+\end{figure}
 
 \begin{figure}
 \centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-8-1.pdf}
+\includegraphics{SafePaths_WhitePaper_SupplMat_files/figure-latex/unnamed-chunk-8-1.eps}
 \caption{Change in distribution over time of the different
 epidemiological compartments, a) Infected, b) Deaths and c)
 Self-quarantined traced contacts depending on the increase of adoption
@@ -297,13 +294,15 @@ adoption & max\_infected & max\_death & max\_Sq\tabularnewline
 \bottomrule
 \end{longtable}
 
+\newpage
+
 \hypertarget{universal-shelter-in-place-model}{%
 \section{Universal Shelter-in-place
 model}\label{universal-shelter-in-place-model}}
 
 \begin{figure}
 \centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-10-1.pdf}
+\includegraphics{SafePaths_WhitePaper_SupplMat_files/figure-latex/unnamed-chunk-10-1.eps}
 \caption{Overview of the model flows used to simulate the
 government-imposed non-clinical procedure to curb the spread of
 COVID-19}
@@ -363,9 +362,6 @@ population. Quarantined people will decrease after the intervetion time
 for simplicity purposes). The incidence of intervention does \emph{not}
 depend on the I compartment.
 
-\hypertarget{equations-1}{%
-\subsection{Equations:}\label{equations-1}}
-
 \(\displaystyle \theta = \frac{1}{T_{intervention}}\)
 
 \(\displaystyle \frac{dS}{dt} = - (1-g)\frac{\beta}{N}SI - g\theta S\)
@@ -380,12 +376,9 @@ depend on the I compartment.
 
 \(\displaystyle \frac{dD}{dt} = \mu I\)
 
-\hypertarget{model-1}{%
-\subsection{Model}\label{model-1}}
-
 \begin{figure}
 \centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-13-1.pdf}
+\includegraphics{SafePaths_WhitePaper_SupplMat_files/figure-latex/unnamed-chunk-13-1.eps}
 \caption{Change in distribution over time of the different
 epidemiological compartments, a) Infected, b) Exposed and c) Quarantined
 individuals depending on the increase of government intervention. The
@@ -423,20 +416,6 @@ max\_q\tabularnewline
 0k & 7k & 5k & 115 048k\tabularnewline
 \bottomrule
 \end{longtable}
-
-\begin{figure}
-\centering
-\includegraphics{SafePaths_Impact_final_files/figure-latex/unnamed-chunk-15-1.pdf}
-\caption{Comparison between the Contact tracing model (left) and the
-traditional intervention model (right) on the impact to limit the spread
-of COVID-19 in the United States. Plot shows the distribution of the
-modeled Infected (a,b), Exposed (c,d), Self-Isolated (e) and Quarantined
-(f) compartments. Impact of both measures in limiting the number of
-infected and exposed is comparable. It is possible to notice the high
-and long-term impact on the global population in the traditional
-intervention model, whereas the self-quarantine compartment from the
-contact tracing app results much smaller.}
-\end{figure}
 
 
 \end{document}
