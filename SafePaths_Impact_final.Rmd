@@ -135,8 +135,8 @@ timepoints = seq(0, obs_time, by = .5)
 
 # Pre-assumed parameters
 R0 = 3.02
-infectious_period = 2.9
-latent_period = 5.2 
+incubation_period = 5.1
+latent_period = 11.5 
 
 
 # Current state as JHU dashboard for `r Sys.Date()`
@@ -146,8 +146,8 @@ Deaths= Current_scenario[Current_scenario$date>reference_date,]$Deaths[1]
 
 Susceptible = N - Current_scenario[Current_scenario$date>reference_date,]$Infected[1]
 
-mu_0 <- .057/14
-gamma_0 <- 1/infectious_period
+mu_0 <- 1.5018/14
+gamma_0 <- 1/incubation_period
 beta_0 <- R0*gamma_0
 
 ```
@@ -155,13 +155,13 @@ beta_0 <- R0*gamma_0
 
 We assume the following initial parameters: 
 
-- $T_{inf}$ = Duration of the _infectious_period_ (~2.9 days, from literature)
+- $T_{inf}$ = Duration of the _incubation_period_ (5.1 days, from from [Lauer et al. 2020](https://doi.org/10.7326/M20-0504))
 
-- $T_{lat}$ = Latency period before development of symptoms (~ 5.2, averaged from [literature](https://www.eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.5.2000062))
+- $T_{lat}$ = Latency period before development of symptoms (11.5, averaged from [Lauer et al. 2020](https://doi.org/10.7326/M20-0504))
 
 - Basic $R_0$ = `r R0` from [Majumder & Mandi (2020)](https://doi.org/10.1016/S2214-109X%2820%2930113-3)
 
-Preliminary death rate $\mu = 0.057$ (1% estimated by [Baud et al. 2020](https://doi.org/10.1016/S1473-3099%2820%2930195-X) in the early phase of the disease)
+Preliminary death rate $\mu = 0.11$ (CFR of 1.5% max estimated from [Magri and Khoa Doan](https://arxiv.org/pdf/2004.09478.pdf))
  
 $\beta$ imputed from the definition of $\displaystyle R_{0}= \frac{\beta}{\gamma}$
 
@@ -304,10 +304,8 @@ Ct_infection_curves <- res_ct  %>%
                       name = 'Adoption percentage')+
   xlab('Time since beginning of recording (days)') + 
   ylab('Infected')+
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
-  xlim(c(0,200))
-
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.5e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash')
 
 Ct_exp_curves <- res_ct  %>% 
   ggplot(aes(x=time, 
@@ -322,10 +320,9 @@ Ct_exp_curves <- res_ct  %>%
                         aesthetics = 'color', 
                         name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
-  scale_y_continuous(labels = unit_format(unit = "M", scale =  1e-6), limits = c(0,7e7))+
+  scale_y_continuous(labels = unit_format(unit = "M", scale =  1e-6), limits = c(0,5e7))+
   ylab('Exposed')+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
-  xlim(c(0,200))
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
 
 Ct_Sq_curves <- res_ct  %>% 
   ggplot(aes(x=time, 
@@ -473,12 +470,12 @@ for (government_intervention in seq(0.0, 0.99, by=.1)) {
 
 
   test_params = c(
-    beta_value = R0/infectious_period,
+    beta_value = beta_0,
     gamma_value = gamma_0,
     mu_value = mu_0,
     delta_value = 1/latent_period,
     gov_p = government_intervention, 
-    theta = 1/(50)
+    theta = 1/(60)
     )
   
   out <- lsoda(y = state_values, times = seq(1,obs_time), func = SEGIRD, parms = test_params)
@@ -508,10 +505,8 @@ Ga_infection_curves <- res_ga  %>%
                       name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
   ylab('Infected')+
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
-  xlim(c(0,200))
-
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,2e7))+
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
 
 Ga_exp_curves <- res_ga  %>% 
   mutate(government_intervention=as.factor(government_intervention)) %>% 
@@ -527,10 +522,9 @@ Ga_exp_curves <- res_ga  %>%
                         aesthetics = 'color', 
                         name = 'Intervention strength')+
   xlab('Time since beginning of recording (days)') + 
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7))+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,5e7))+
   ylab('Exposed')+
-  geom_hline(yintercept = 1e6, linetype = 'dotdash') +
-  xlim(c(0,200))
+  geom_hline(yintercept = 1e6, linetype = 'dotdash') 
 
 Ga_Gq_curves <- res_ga  %>% 
   mutate(government_intervention=as.factor(government_intervention)) %>% 
@@ -579,8 +573,10 @@ res_ga %>%
 p<- ggarrange(
   ggarrange(Ct_infection_curves + 
               guides(color=guide_legend(title = 'Percentage', nrow=1),
-                     fill=guide_legend(title = 'Percentage', nrow=1)), 
-            Ga_infection_curves, 
+                     fill=guide_legend(title = 'Percentage', nrow=1))+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.3e7)), 
+            Ga_infection_curves+
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.3e7)), 
             nrow=1, 
             common.legend = T, 
             legend = 'bottom',
@@ -588,9 +584,9 @@ p<- ggarrange(
   ggarrange(Ct_exp_curves+  
               guides(color=guide_legend(title = 'Percentage', nrow=1),
                      fill=guide_legend(title = 'Percentage', nrow=1))+
-              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7)), 
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,5e7)), 
             Ga_exp_curves+
-              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,7e7)), 
+              scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,5e7)), 
             nrow=1, 
             common.legend = T, 
             legend = 'bottom',
@@ -730,31 +726,60 @@ res_cta %>%
 
 
 
-```{r eval=FALSE, fig.height=21, fig.width=7, include=FALSE}
+```{r}
+library(gganimate)
+library(transformr)
 
-v <- res_cta  %>% 
-  mutate(pop_adoption=as.factor(pop_adoption)) %>% 
-  filter(time<150) %>% 
+myfunction <- function(var, string) {
+  print(var)
+  print(string)
+  result <- paste('Adoption:',as.character(string))
+  return(result)
+}
+
+
+
+v<- res_cta  %>% 
+  filter(pop_adoption>0) %>% 
+  # filter(pop_adoption==first(pop_adoption)) %>%
+  mutate(pop_adoption=as.factor(pop_adoption), 
+         pop_responsibility=as.factor(pop_responsibility)) %>% 
   ggplot(aes(x=time, 
-             fill=pop_adoption,
-             color=pop_adoption))+
+             fill=pop_responsibility,
+             color=pop_responsibility))+
   geom_area(aes(y=Infected*N), pos='identity', alpha=.8)+
   ggpubr::theme_pubr()+
   scale_discrete_manual(values = colorRampPalette(colors = c("#AD002AFF", '#ffccd9'))(10), 
                         aesthetics = 'fill', 
-                      name = 'Adoption percentage')+
+                      name = 'Responsible use')+
   scale_discrete_manual(values = colorRampPalette(colors = c('#ffccd9',"#AD002AFF"))(10), 
                         aesthetics = 'color', 
-                      name = 'Adoption percentage')+
+                      name = 'Responsible use')+
   xlab('Time since beginning of recording (days)') + 
   ylab('Infected')+
-  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,3.5e7))+
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6), limits = c(0,1.5e7))+
   geom_hline(yintercept = 1e6, linetype = 'dotdash') +
-  facet_grid(rows = 'pop_responsibility') 
+  facet_wrap(.~pop_adoption, switch = 'x', ncol = 3, 
+             labeller = label_bquote(~.('Adoption'):.(pop_adoption)/10)) +
+  theme(legend.position = 'bottom')+ 
+  guides(colour = guide_legend(nrow = 1),
+         fill = guide_legend(nrow = 1))
 
-direct.label(v, method = 'top.bumptwice')
+  
 
-ggsave(filename = 'Curves.png', device = 'png', height = 21, width = 10)
+anim <- v + transition_states(pop_responsibility) + 
+  ggtitle('Responsible use: {closest_state}') +
+  enter_fade() +
+  exit_fade() + 
+  ease_aes('quadratic-in-out') 
+
+animate(anim, renderer = gifski_renderer(), height = 600, width = 800)
+
+# direct.label(v, method = 'top.bumptwice')v
+
+anim_save(filename = 'Anim.gif',)
+# 
+# ggsave(filename = 'Curves.png', device = 'png', height = 21, width = 10)
 
 ```
 
