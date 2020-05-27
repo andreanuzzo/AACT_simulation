@@ -565,7 +565,8 @@ res_ga %>%
   mutate_all(unit_format(scale=1e-3, suffix = 'k', )) %>% 
   select(government_intervention, max_infected = Infected, max_death=Deaths, max_q = Quarantined) %>% 
   kable("pandoc", booktabs = T, 
-        caption = 'Estimated decrease of peak disease impact indicators after imposing external non-clinical intervention on the population to limit the spread of Covid-19') %>%
+        caption = 'Estimated decrease of peak disease impact indicators after imposing external non-clinical intervention on the population to limit the spread of Covid-19'
+        ) %>%
   kable_styling(latex_options = c("striped",'hold_position'), bootstrap_options = c("condensed")) 
 ```
 
@@ -607,7 +608,7 @@ p<- ggarrange(
           nrow=3)
 p
 
-ggsave('Fig8.png', device = 'png', dpi = 'retina', width = 12, height = 15, unit = 'in')
+ggsave('Fig1v2.png', device = 'png', dpi = 'retina', width = 12, height = 15, unit = 'in')
 
 ```
 
@@ -719,9 +720,8 @@ res_cta %>%
   layout(xaxis = list(
     title = "Responsible use (⍺)"), 
     yaxis = list(
-    title = "Adoption (p)"))
-  
-
+    title = "Adoption (p)")) 
+  orca('Fig2v2.png',width = 8, height = 6)
 ```
 
 
@@ -777,7 +777,7 @@ animate(anim, renderer = gifski_renderer(), height = 600, width = 800)
 
 # direct.label(v, method = 'top.bumptwice')v
 
-anim_save(filename = 'Anim.gif',)
+anim_save(filename = 'Fig3.v2.gif',)
 # 
 # ggsave(filename = 'Curves.png', device = 'png', height = 21, width = 10)
 
