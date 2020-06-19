@@ -52,6 +52,20 @@ In this framework we analyze two possibilities to implement non-clinical procedu
 | R           | Recovered, immune from further infection                                                      |
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
+![1](https://latex.codecogs.com/png.latex?%5Cdelta%20%3D%20%5Cfrac%7B1%7D%7BT_%7Blat%7D%7D)
+
+![2](https://latex.codecogs.com/png.latex?\frac{dS}{dt}=-(1-p\cdot&space;\alpha)\frac{\beta}{N}SI)
+
+![3](https://latex.codecogs.com/png.latex?%5Cfrac%7BdE%7D%7Bdt%7D%20%3D%20%281-p%20%5Calpha%29%5Cfrac%7B%5Cbeta%7D%7BN%7DSI%20-%20%5Cdelta%20E%20-%20p%20E)
+
+![4](https://latex.codecogs.com/png.latex?\frac{dSq}{dt}&space;=&space;pE&space;-&space;\delta&space;Sq)
+
+![5](https://latex.codecogs.com/png.latex?%5Cfrac%7BdI%7D%7Bdt%7D%20%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%20%5Cmu%20I%20&plus;%20%5Cdelta%20Sq)
+
+![6](https://latex.codecogs.com/png.latex?\frac{dR}{dt}&space;=&space;\gamma&space;I)
+
+![7](https://latex.codecogs.com/png.latex?\frac{dD}{dt}&space;=&space;\mu&space;I)
+
 
 Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention 50 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
 
