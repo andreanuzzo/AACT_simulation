@@ -42,7 +42,7 @@ In this framework we analyze two possibilities to implement non-clinical procedu
  - Traditional measures: in order to stop the contagion, authorities might recur to enforce social distancing through different measures, going from limitation of public gathering to full lockdown. We use the variable g to model these interventions which will act aspecifically on Susceptible, Exposed and Infected population. This measure does not depend on the percentage of Infected patients, but will still limit the 𝛽 of the Susceptible population. Quarantine will last for a time of 50 days (assumed reasonable in the current scenario)
 
 # Models
-## AACT
+## Traditional
 | Compartment | Functional definition                                                                         |
 |-------------|-----------------------------------------------------------------------------------------------|
 | S           | Susceptible individuals                                                                       |
@@ -55,7 +55,7 @@ In this framework we analyze two possibilities to implement non-clinical procedu
 
 Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention 50 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
 
-## Traditional
+## AACT
 | Compartment | Functional definition                                                                         |
 |-------------|-----------------------------------------------------------------------------------------------|
 | S           | Susceptible individuals                                                                       |
