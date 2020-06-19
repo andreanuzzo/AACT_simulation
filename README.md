@@ -52,17 +52,17 @@ In this framework we analyze two possibilities to implement non-clinical procedu
 | R           | Recovered, immune from further infection                                                      |
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
-![1](https://latex.codecogs.com/png.latex?%5Cdelta%20%3D%20%5Cfrac%7B1%7D%7BT_%7Blat%7D%7D)
+![1](https://latex.codecogs.com/png.latex?%5Cdelta%20%3D%20%5Cfrac%7B1%7D%7BT_%7Binterv%7D%7D)
 
-![2](https://latex.codecogs.com/png.latex?\frac{dS}{dt}=-(1-p\cdot&space;\alpha)\frac{\beta}{N}SI)
+![2](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20S%7D%7Bd%20t%7D%20%3D%20-%20%281%20-%20g%29%5Cfrac%7B%5Cbeta%7D%7BN%7D%20S%20I%20-%20g%20%5Ctheta%20S)
 
-![3](https://latex.codecogs.com/png.latex?%5Cfrac%7BdE%7D%7Bdt%7D%20%3D%20%281-p%20%5Calpha%29%5Cfrac%7B%5Cbeta%7D%7BN%7DSI%20-%20%5Cdelta%20E%20-%20p%20E)
+![3](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20Q%20%7D%7Bd%20t%20%7D%20%3D%20g%20%5Ctheta%20S%20-%20%5Ctheta%20Q)
 
-![4](https://latex.codecogs.com/png.latex?\frac{dSq}{dt}&space;=&space;pE&space;-&space;\delta&space;Sq)
+![4](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20E%7D%7Bd%20t%7D%20%3D%20%281%20-%20g%29%5Cfrac%7B%5Cbeta%7D%7BN%7D%20S%20I%20-%20%5Cdelta%20E)
 
-![5](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20I%7D%7Bd%20t%7D%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%5Cmu%20I%20&plus;%20%5Cdelta%20Sq)
+![5](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20I%7D%7Bd%20t%7D%20%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%20g%20I)
 
-![6](https://latex.codecogs.com/png.latex?\frac{dR}{dt}&space;=&space;\gamma&space;I)
+![6](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20R%7D%7Bd%20t%7D%20%3D%20%5Cgamma%20I%20&plus;%20%5Ctheta%20Q)
 
 ![7](https://latex.codecogs.com/png.latex?\frac{dD}{dt}&space;=&space;\mu&space;I)
 
@@ -80,4 +80,18 @@ Here we will consider ![g](https://latex.codecogs.com/png.latex?%5Cinline%20g) a
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
 Here we will consider ![p](https://latex.codecogs.com/png.latex?%5Cinline%20p) as the percentage of adoption of the contact tracing digital solution among the _whole_ population and ![alpha](https://latex.codecogs.com/png.latex?%5Cinline%20%5Calpha) the percentage of population _with_ the app that would eventually follow the recommendation and self-isolate. We are assuming that percentage of responsible use corresponds to efficacy and tempestivity of isolation Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
+
+![1](https://latex.codecogs.com/png.latex?%5Cdelta%20%3D%20%5Cfrac%7B1%7D%7BT_%7Blat%7D%7D)
+
+![2](https://latex.codecogs.com/png.latex?\frac{dS}{dt}=-(1-p\cdot&space;\alpha)\frac{\beta}{N}SI)
+
+![3](https://latex.codecogs.com/png.latex?%5Cfrac%7BdE%7D%7Bdt%7D%20%3D%20%281-p%20%5Calpha%29%5Cfrac%7B%5Cbeta%7D%7BN%7DSI%20-%20%5Cdelta%20E%20-%20p%20E)
+
+![4](https://latex.codecogs.com/png.latex?\frac{dSq}{dt}&space;=&space;pE&space;-&space;\delta&space;Sq)
+
+![5](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20I%7D%7Bd%20t%7D%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%5Cmu%20I%20&plus;%20%5Cdelta%20Sq)
+
+![6](https://latex.codecogs.com/png.latex?\frac{dR}{dt}&space;=&space;\gamma&space;I)
+
+![7](https://latex.codecogs.com/png.latex?\frac{dD}{dt}&space;=&space;\mu&space;I)
 
