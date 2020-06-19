@@ -60,14 +60,14 @@ In this framework we analyze two possibilities to implement non-clinical procedu
 
 ![4](https://latex.codecogs.com/png.latex?\frac{dSq}{dt}&space;=&space;pE&space;-&space;\delta&space;Sq)
 
-![5](https://latex.codecogs.com/png.latex?%5Cfrac%7BdI%7D%7Bdt%7D%20%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%20%5Cmu%20I%20&plus;%20%5Cdelta%20Sq)
+![5](https://latex.codecogs.com/png.latex?%5Cfrac%7Bd%20I%7D%7Bd%20t%7D%3D%20%5Cdelta%20E%20-%20%5Cgamma%20I%20-%5Cmu%20I%20&plus;%20%5Cdelta%20Sq)
 
 ![6](https://latex.codecogs.com/png.latex?\frac{dR}{dt}&space;=&space;\gamma&space;I)
 
 ![7](https://latex.codecogs.com/png.latex?\frac{dD}{dt}&space;=&space;\mu&space;I)
 
 
-Here we will consider $g$ as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and $\theta$ as the rate of intervention (assumint time of intervention 50 days). Here $g$ will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
+Here we will consider ![g](https://latex.codecogs.com/png.latex?%5Cinline%20g) as the strength of intervention, hard to quantify numerically, but can be assumed to increase from limiting big gathering events up to full lockdown, and ![theta](https://latex.codecogs.com/png.latex?%5Cinline%20%5Ctheta) as the rate of intervention (assumint time of intervention 50 days). Here ![g](https://latex.codecogs.com/png.latex?%5Cinline%20g) will have effect on the Susceptible population. Quarantined people will decrease after the intervetion time (and ideally assigned to the Recovered, not the Susceptible population for simplicity purposes). The incidence of intervention does _not_ depend on the I compartment.
 
 ## AACT
 | Compartment | Functional definition                                                                         |
@@ -79,5 +79,5 @@ Here we will consider $g$ as the strength of intervention, hard to quantify nume
 | R           | Recovered, immune from further infection                                                      |
 | D           | Case fatality (death due to COVID-19, not other causes)                                       |
 
-Here we will consider $p$ as the percentage of adoption of the contact tracing digital solution among the _whole_ population and $\alpha\$ the percentage of population _with_ the app that would eventually follow the recommendation and self-isolate. We are assuming that percentage of responsible use corresponds to efficacy and tempestivity of isolation Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
+Here we will consider ![p](https://latex.codecogs.com/png.latex?%5Cinline%20p) as the percentage of adoption of the contact tracing digital solution among the _whole_ population and ![alpha](https://latex.codecogs.com/png.latex?%5Cinline%20%5Calpha) the percentage of population _with_ the app that would eventually follow the recommendation and self-isolate. We are assuming that percentage of responsible use corresponds to efficacy and tempestivity of isolation Moreover, we do not model the second and third-grade exposure risks from the first contacts for simplicity.
 
