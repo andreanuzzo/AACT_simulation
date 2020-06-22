@@ -1,5 +1,5 @@
 # Description
-This is the code repository for the paper [Universal Shelter-in-Place vs. Advanced Automated Contact Tracing and Targeted Isolation: A Case for 21st-Century Technologies for SARS-CoV-2 and Future Pandemics](https://els-jbs-prod-cdn.jbs.elsevierhealth.com/pb/assets/raw/Health%20Advance/journals/jmcp/jmcp_ft95_6_7.pdf)
+This is the code repository for the paper [Universal Shelter-in-Place vs. Advanced Automated Contact Tracing and Targeted Isolation: A Case for 21st-Century Technologies for SARS-CoV-2 and Future Pandemics](https://doi.org/10.1016/j.mayocp.2020.06.027)
 
 # Dependencies
 Requires the following packages in base R 3.6.1
